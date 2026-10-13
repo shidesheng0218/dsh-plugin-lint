@@ -61,9 +61,17 @@ exit code = 0
 | `active` | 无 warning，直达 `MISSING_CREDENTIAL` | host 半边挂载成功 |
 | `inactive: pending` | `pending (waiting for service: X)` | `inject` 的服务不存在 → 按设计保持不激活（可能是依赖被禁用，也可能是真不兼容） |
 | `inactive: error` | `Error: …` + 堆栈 | `apply()` 抛错，附完整堆栈与出错文件行 |
+
 | `install-failed` | pnpm 报错 | 包不存在 / 网络 / peer 冲突 |
 
 移除插件后再次启动**无任何 warning**，说明探针可重复、无残留。
+
+两种失败模式的**夹具已入库**（[`test/probe-plugins/`](../test/probe-plugins/)），可随时复验分类是否漂移：
+
+```bash
+node scripts/probe-boot.mjs test/probe-plugins/throws-in-apply test/probe-plugins/missing-service
+# → inactive (Error) / inactive (pending)，真实插件 → active
+```
 
 ## 4. 成本实测
 
