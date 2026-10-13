@@ -31,8 +31,12 @@ The profile then shows a **Plugin compatibility** section in Settings.
 | --- | --- |
 | Host half mounts on DSH 0.2.0-rc.2, headless and web | ✅ `active` both |
 | Host half mounts on DSH 0.2.1-alpha.2, headless and web | ✅ `active` both |
-| `dsh-plugin-lint` on this package | ✅ 0 error, 0 warn |
+| `dsh-plugin-lint` on this package | ✅ 0 error, 0 warn, 0 info |
 | Host payload logic (installed bundles joined against the matrix) | ✅ unit tested |
-| **What the page looks like in a browser** | ❌ **not verified** |
+| **What the page looks like in a browser** | ✅ **verified, and screenshotted** |
 
-The last row is a real gap, not a formality: no browser control was available while building this, so the layout, the theme tokens in both light and dark mode, and the actual rendering of the table have not been seen. Treat the visual design as unverified until someone opens the page.
+Visual verification is [scripts/screenshot-panel.mjs](../scripts/screenshot-panel.mjs): it installs this package into a throwaway web profile, opens the app in Chromium and captures the section. It caught two bugs a code review had not — the page said "Running DSH unknown" because `import.meta.resolve` cannot see the harness from inside a profile, and it called first-party bundles "not installed" although the dsh installation provides them.
+
+```bash
+node scripts/screenshot-panel.mjs        # writes docs/assets/panel.png
+```

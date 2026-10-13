@@ -85,7 +85,8 @@ window.__ModuleLoader__.load({
         React.createElement('td', { style: td },
           React.createElement('div', { style: { color: T.text } }, row.name),
           React.createElement('div', { style: { color: T.tertiary, fontSize: '12px' } },
-            (row.version || 'not installed') + (row.known ? '' : ' · not in the matrix'))),
+            (row.version || (row.providedBy === 'dsh-installation' ? 'bundled with DSH' : 'not installed'))
+            + (row.known ? '' : ' · not in the matrix'))),
         versions.map((v) => {
           const cell = cellFor(row, v);
           if (!cell) return React.createElement('td', { key: v, style: td }, React.createElement('span', { style: { color: T.tertiary } }, '—'));
@@ -115,7 +116,7 @@ window.__ModuleLoader__.load({
           + 'Cells state detected facts about named packages; they are not a verdict.'));
     }
 
-    const th = { textAlign: 'left', padding: '6px 10px', borderBottom: T.border, color: T.secondary, fontWeight: 500, fontSize: '12px' };
+    const th = { textAlign: 'left', padding: '6px 10px', borderBottom: T.border, color: T.secondary, fontWeight: 500, fontSize: '12px', whiteSpace: 'nowrap' };
     const td = { padding: '8px 10px', borderBottom: T.border, verticalAlign: 'top' };
 
     class Boundary extends React.Component {

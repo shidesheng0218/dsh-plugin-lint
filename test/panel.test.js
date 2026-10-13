@@ -71,6 +71,18 @@ test('the panel reports the installed version of every selected bundle', () => {
   });
 });
 
+test('the panel says who provides a bundle, not just whether it was found', () => {
+  // A first-party bundle is resolved from the dsh installation, so its absence
+  // from the profile's node_modules is normal. The page used to call that "not
+  // installed" until providedBy was carried through to the row.
+  const dir = profile([{ name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
+  withProfile(dir, () => {
+    const row = panel.payload().rows[0];
+    assert.equal(row.firstParty, true);
+    assert.equal(row.providedBy, 'profile');
+  });
+});
+
 test('the panel marks a bundle the matrix does not cover', () => {
   const dir = profile([{ name: 'a-plugin-nobody-has-heard-of', version: '0.0.1' }]);
   withProfile(dir, () => {
