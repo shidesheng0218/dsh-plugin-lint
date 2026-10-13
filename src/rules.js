@@ -89,7 +89,7 @@ export const RULES = [
     doc: DOC.host,
     check(ctx, options, push) {
       const declared = [
-        ['host entry', ctx.entries.host, 'manifest.main or exports["."]'],
+        ['host entry', ctx.entries.hostDeclared ? ctx.entries.host : undefined, 'manifest.main or exports["."]'],
         ['client entry', ctx.entries.client, 'exports["./client"]'],
         ['bundle patch', ctx.entries.patch, 'dsh.bundle.patch'],
         ['icon', ctx.entries.icon, 'icon'],

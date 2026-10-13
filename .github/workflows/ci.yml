@@ -1,0 +1,27 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Fetch official packages from npm
+        run: node scripts/fetch-official-from-npm.mjs --limit 80
+
+      - name: Zero-false-positive baseline
+        run: node scripts/e2e-official.mjs
+
+      - name: Lint this repository's own probe fixtures
+        run: node bin/dsh-plugin-lint.mjs test/probe-plugins --quiet --no-color

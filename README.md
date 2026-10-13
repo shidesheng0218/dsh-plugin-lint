@@ -132,6 +132,38 @@ Mount failures are warnings and the process still exits 0, so the exit code is n
 
 Each run writes `reports/<date>/`: `REPORT.md` (human), `raw.json` (every finding), `packages.json` (artifacts pinned by `dist.integrity`). Reports name published packages, so they are **drafts until every named maintainer has been contacted** — see [docs/08-author-notification.md](docs/08-author-notification.md).
 
+## Compatibility matrix
+
+The probe also runs as a grid: one cell per plugin version × DSH version × composition.
+
+```bash
+node scripts/matrix/run.mjs --targets matrix/targets-top50.json --concurrency 4
+node scripts/matrix/site.mjs
+```
+
+Measured on 2026-10-13 over 228 cells (57 plugins, two DSH versions, headless and web):
+**17 of 57 plugins get a worse verdict on the newer DSH version and none get better**; 14 are the host refusing the install outright. `billion-context` grows the system prompt by 10,862 characters. See [docs/14](docs/14-top50-results.md).
+
+Plugin authors can run the same probe from their own CI — [docs/15](docs/15-federation.md):
+
+```yaml
+- uses: <owner>/dsh-plugin-lint/.github/actions/probe@v1
+  with:
+    target: .
+    dsh-versions: 0.2.0-rc.2,0.2.1-alpha.2
+```
+
+Self-reported cells are never presented as ours: they are sampled, re-run, and either promoted to `verified` or marked `disputed` with both verdicts kept.
+
+## Before publishing a report
+
+Every report names packages, so the project follows one rule (ADR D-001): **name the package, state only what was detected, cite the source, and notify the maintainer first.**
+
+```bash
+node scripts/build-notification-pack.mjs     # notify/NOTIFICATIONS.md + one message per package
+node scripts/build-contact-list.mjs reports/<date>
+```
+
 ## Development
 
 ```bash

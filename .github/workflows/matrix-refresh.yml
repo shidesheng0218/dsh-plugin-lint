@@ -1,0 +1,47 @@
+name: matrix refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '10'
+
+      - name: Probe the published top 50 against the pinned DSH versions
+        run: node scripts/matrix/run.mjs --targets matrix/targets-top50.json --concurrency 4
+
+      - name: Regenerate the site and the aggregate index
+        run: node scripts/matrix/site.mjs
+
+      - name: Open a pull request with the changed cells
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no change this week"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="matrix/refresh-${{ github.run_id }}"
+          git checkout -b "$branch"
+          git add -A
+          git commit -m "chore(matrix): refresh cells"
+          git push origin "HEAD:$branch"
+          gh pr create --title "chore(matrix): refresh cells" --body "Automated weekly refresh. Review the verdict changes before merging: a plugin moving from active to rejected-by-host is the signal this project exists to produce." --base "${{ github.event.repository.default_branch }}" --head "$branch"

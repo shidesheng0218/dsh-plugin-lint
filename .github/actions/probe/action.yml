@@ -1,0 +1,91 @@
+name: 'DSH plugin probe'
+description: 'Install a DeepSeek Harness plugin into a throwaway profile and report what the host does with it.'
+author: 'dsh-plugin-lint'
+branding:
+  icon: 'check-circle'
+  color: 'green'
+
+inputs:
+  target:
+    description: 'Package name, or a path to the plugin in this repository.'
+    required: false
+    default: '.'
+  dsh-versions:
+    description: 'Comma-separated DSH versions to probe against.'
+    required: false
+    default: '0.2.0-rc.2'
+  mode:
+    description: 'Compositions to probe: headless, web, or both.'
+    required: false
+    default: 'both'
+  tools:
+    description: 'Also capture the tool inventory and system-prompt cost (needs a stub provider, no API key).'
+    required: false
+    default: 'true'
+  out:
+    description: 'Directory to write cell JSON into.'
+    required: false
+    default: 'matrix-cells'
+  comment:
+    description: 'Post the summary as a pull-request comment.'
+    required: false
+    default: 'false'
+
+outputs:
+  cells:
+    description: 'Directory holding one JSON cell per plugin version x DSH version x composition.'
+    value: ${{ inputs.out }}
+  summary:
+    description: 'Path to a markdown summary of the run.'
+    value: ${{ inputs.out }}/SUMMARY.md
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: '10'
+
+    - name: Probe
+      shell: bash
+      env:
+        TOOLS_FLAG: ${{ inputs.tools == 'true' && '--tools' || '--no-tools' }}
+      run: |
+        set -euo pipefail
+        node "${{ github.action_path }}/scripts/matrix/run.mjs" \
+          --plugins "${{ inputs.target }}" \
+          --dsh "${{ inputs.dsh-versions }}" \
+          --mode "${{ inputs.mode }}" \
+          --out "${{ inputs.out }}" \
+          --cache "${{ runner.temp }}/dsh-matrix-cache" \
+          "$TOOLS_FLAG" | tee "${{ inputs.out }}/probe.log"
+        mkdir -p "${{ inputs.out }}"
+        {
+          echo "## DSH plugin probe"
+          echo
+          echo '\`\`\`'
+          tail -n 20 "${{ inputs.out }}/probe.log"
+          echo '\`\`\`'
+          echo
+          echo "Each cell states facts about the host half only; a client half is loaded by the web app in a browser and is not exercised here."
+        } > "${{ inputs.out }}/SUMMARY.md"
+
+    - name: Upload cells
+      uses: actions/upload-artifact@v4
+      with:
+        name: dsh-probe-cells
+        path: ${{ inputs.out }}
+
+    - name: Comment on the pull request
+      if: ${{ inputs.comment == 'true' && github.event_name == 'pull_request' }}
+      continue-on-error: true
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh pr comment "${{ github.event.pull_request.number }}" --body-file "${{ inputs.out }}/SUMMARY.md"

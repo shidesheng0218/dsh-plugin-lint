@@ -18,8 +18,15 @@ export function loadPackage(dir) {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
 
   const norm = (p) => (p === undefined ? undefined : String(p).replace(/^\.\//, ''));
+  // Node resolves an undeclared package entry to index.js, so the fallback is
+  // correct for resolution — but "nothing was declared" is not the same as
+  // "index.js was declared and is missing". A static asset package (measured:
+  // @deepseek-ai/dsh-web-frontend exports only ./dist/*) has no host entry at all,
+  // and flagging it would be a false positive.
+  const declaredHost = firstString(manifest.main) || exportTarget(manifest.exports, '.');
   const entries = {
-    host: norm(firstString(manifest.main) || exportTarget(manifest.exports, '.') || 'index.js'),
+    host: norm(declaredHost || 'index.js'),
+    hostDeclared: Boolean(declaredHost || (manifest.dsh && manifest.dsh.bundle)),
     client: norm(exportTarget(manifest.exports, './client') || (manifest.dsh && manifest.dsh.client ? 'client.js' : undefined)),
     patch: norm(manifest.dsh && manifest.dsh.bundle ? firstString(manifest.dsh.bundle.patch) : undefined),
     icon: norm(firstString(manifest.icon)),
