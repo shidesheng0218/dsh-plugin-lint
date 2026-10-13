@@ -61,7 +61,9 @@ The ecosystem has 4,508 catalogued plugins and adds roughly a thousand a month. 
 | Run | Result |
 | --- | --- |
 | 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 239 info |
-| 12 published community plugins | **0 error · 13 warn · 25 info** |
+| Top 100 published community plugins ([report](reports/2026-10-13/REPORT.md)) | **1 error · 86 warn** · 223 info |
+| — of which couple to a Harness Client package | **62%** |
+| — of which declare no DSH compatibility range | **87%** |
 
 The error rules did not fire on any published plugin. They are insurance against rare, fatal mistakes — the daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07-m1-results.md](docs/07-m1-results.md).
 
@@ -109,6 +111,15 @@ npx dsh-plugin-lint . --exit-code        # exit 1 when any error-level finding i
 ```
 
 Exit codes: `0` ok · `1` errors found with `--exit-code` · `2` the run failed.
+
+## Reports
+
+```bash
+node scripts/build-report.mjs --top 100        # ecosystem coupling & declaration report
+node scripts/build-contact-list.mjs reports/<date>   # who to notify before publishing
+```
+
+Each run writes `reports/<date>/`: `REPORT.md` (human), `raw.json` (every finding), `packages.json` (artifacts pinned by `dist.integrity`). Reports name published packages, so they are **drafts until every named maintainer has been contacted** — see [docs/08-author-notification.md](docs/08-author-notification.md).
 
 ## Development
 

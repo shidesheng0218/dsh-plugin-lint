@@ -20,19 +20,19 @@ export const RULES = [
   {
     id: 'E1',
     level: 'error',
-    title: 'appends a session event type the Harness does not define',
+    title: 'appends a session event type that appears nowhere in the official packages',
     doc: DOC.practices,
     check(ctx, options, push) {
       for (const file of ctx.jsFiles) {
         for (const site of appendCallSites(file.masked, file.strings)) {
           if (!EVENT_TYPE_RE.test(site.type)) continue;
-          if (EVENT_TYPE_RE.test(site.type) && EVENT_TYPES.has(site.type)) continue;
+          if (EVENT_TYPES.has(site.type)) continue;
           push({
             file: file.path,
             line: site.line,
-            message: 'session.append("' + site.type + '", ...) uses an event type outside the Harness catalog (' + EVENT_TYPES.size + ' known types).',
+            message: 'session.append("' + site.type + '", ...): this type does not appear anywhere in the official Harness packages (' + EVENT_TYPES.size + ' types observed).',
             evidence: '.append("' + site.type + '", ...)',
-            hint: 'A live Session.append() cannot set ignorable: true, so a log holding an unknown event type can refuse to reopen. Derive state from existing events instead.',
+            hint: 'The reference asks plugins not to append session events with a new type: a live Session.append() cannot set ignorable: true, so a log holding an unknown type can refuse to reopen. The allowlist is harvested, not authoritative — if this type is legitimate, it is a gap in the rule, not in your plugin.',
           });
         }
       }
@@ -42,24 +42,41 @@ export const RULES = [
   {
     id: 'E2',
     level: 'error',
-    title: 'client bundle factory id does not match the package name',
+    title: 'client bundle factory id matches nothing the loader can ask for',
     doc: DOC.ui,
     check(ctx, options, push) {
       if (ctx.entries.client === undefined || !ctx.exists(ctx.entries.client)) return;
       const file = ctx.byPath(ctx.entries.client);
       if (!file) return;
+
+      // The loader keys the browser module table by an id and throws when a bundle
+      // registers a different one (dsh-client-modules: "bundle … loaded without
+      // registering \"id\""). What it asks for is either the package name or a row
+      // name from the plugin's own patch, so both are acceptable. Asserting only the
+      // package name produced a false accusation against @roarpeng/graphflow, whose
+      // patch mounts the row "@roarpeng/graphflow/dsh".
+      const acceptable = new Set();
+      if (ctx.manifest.name) acceptable.add(ctx.manifest.name);
+      const patchRows = [];
+      if (ctx.entries.patch !== undefined && ctx.exists(ctx.entries.patch)) {
+        const patch = ctx.text(ctx.entries.patch) || '';
+        for (const m of patch.matchAll(/^\s*name:\s*['"]?([^'"\s#]+)['"]?/gm)) {
+          acceptable.add(m[1]);
+          patchRows.push(m[1]);
+        }
+      }
+
       const re = /__ModuleLoader__\s*\.\s*load\s*\(\s*\{\s*id\s*:\s*/g;
       let m;
       while ((m = re.exec(file.masked)) !== null) {
         const s = stringAfter(file.strings, m.index + m[0].length, 8);
-        if (!s) continue;
-        if (s.value === ctx.manifest.name) continue;
+        if (!s || acceptable.has(s.value)) continue;
         push({
           file: file.path,
           line: s.line,
-          message: 'factory id "' + s.value + '" does not equal the package name "' + ctx.manifest.name + '".',
+          message: 'factory id "' + s.value + '" is neither the package name "' + ctx.manifest.name + '" nor a row name in ' + (ctx.entries.patch || 'the bundle patch') + (patchRows.length ? ' (' + [...new Set(patchRows)].join(', ') + ')' : '') + '.',
           evidence: '__ModuleLoader__.load({ id: "' + s.value + '" })',
-          hint: 'The browser module table keys the factory by package name; a mismatch leaves the registration unreachable at runtime.',
+          hint: 'The browser module table keys the factory by the id it asks for and the loader throws when a bundle registers another one, leaving the client half unreachable.',
         });
       }
     },

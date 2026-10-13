@@ -75,6 +75,16 @@ test('E2 stays quiet when the factory id equals the package name', () => {
   assert.equal(rules(report).includes('E2'), false);
 });
 
+test('E2 accepts a factory id that matches a row name in the plugin patch', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': './client.js' }, dsh: { client: { platform: 'web' }, bundle: { patch: './cordis.patch.yml' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin/sub", factory: (r) => ({}) });',
+    'cordis.patch.yml': ['- insert:', '    - id: demo-sub', '      name: "demo-plugin/sub"', ''].join('\n'),
+  });
+  assert.equal(rules(report).includes('E2'), false);
+});
+
 test('E3 fires when the bundle patch is missing', () => {
   const report = fixture({
     'package.json': base({ dsh: { bundle: { patch: './cordis.patch.yml' } } }),
