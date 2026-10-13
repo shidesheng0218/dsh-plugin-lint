@@ -23,7 +23,9 @@ const argOf = (name, fallback) => {
 const keep = argv.includes('--keep');
 const withTools = argv.includes('--tools');
 const dshVersion = argOf('--dsh', undefined);
-const packages = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--dsh');
+const mode = argOf('--mode', 'headless');
+const VALUE_FLAGS = ['--dsh', '--mode', '--cache'];
+const packages = argv.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(argv[i - 1]));
 if (packages.length === 0) {
   console.error('usage: node scripts/probe-boot.mjs <npm-package|path> [...] [--tools] [--dsh <version>] [--keep]');
   process.exit(2);
@@ -36,7 +38,7 @@ console.log('probing with ' + dsh.id + (withTools ? ' + stub provider' : ''));
 
 const results = [];
 for (const name of packages) {
-  const cell = await probePackage({ target: name, dsh, stub, tools: withTools, keep });
+  const cell = await probePackage({ target: name, dsh, stub, tools: withTools, keep, mode });
   results.push({ package: name, ...cell });
   console.log(cell.status.padEnd(16) + name + '  (' + cell.durationMs + ' ms)');
   for (const e of cell.entries) console.log('                 ' + e.id + ': ' + e.reason);

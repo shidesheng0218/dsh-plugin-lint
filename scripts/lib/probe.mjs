@@ -17,7 +17,7 @@
  *   - the stub provider must be served while the child runs, so children are
  *     started ASYNCHRONOUSLY (a synchronous child deadlocks the stub).
  */
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -88,6 +88,44 @@ export async function runDsh(dsh, home, args, env = {}) {
   });
   return stdout + stderr;
 }
+
+/**
+ * Run a long-lived profile until it reports readiness, then stop it.
+ *
+ * The web profile serves until killed, so readiness is a sentinel line rather
+ * than an exit: "dsh web: http://127.0.0.1:<port>/?token=…". We stop as soon as
+ * it appears (plus a short grace period) because a mounted plugin may start doing
+ * work of its own — measured: dsh-pet began downloading a 116 MB Electron.
+ */
+export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
+  const timeoutMs = options.timeoutMs ?? 90000;
+  const graceMs = options.graceMs ?? 2500;
+  return new Promise((resolve) => {
+    const child = spawn(dsh.node, [...dsh.extraArgs, dsh.cli, ...args], {
+      env: { ...process.env, DSH_HOME: home, ...(dsh.kind === 'desktop' ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ...env },
+    });
+    let out = '';
+    let finished = false;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      child.kill('SIGTERM');
+      setTimeout(() => child.kill('SIGKILL'), 1500).unref();
+      resolve(out);
+    };
+    const feed = (chunk) => {
+      out += chunk;
+      if (readyRe.test(out)) setTimeout(finish, graceMs).unref();
+    };
+    child.stdout.on('data', feed);
+    child.stderr.on('data', feed);
+    child.on('exit', () => { if (!finished) { finished = true; resolve(out); } });
+    setTimeout(finish, timeoutMs).unref();
+  });
+}
+
+/** Readiness sentinel of the web profile. */
+export const WEB_READY = /dsh web:\s*https?:\/\//;
 
 export async function capture(fn) {
   try { return { out: await fn(), failed: false }; } catch (error) {
@@ -167,7 +205,7 @@ const payloadOf = (seen) => seen.filter((b) => Array.isArray(b.tools)).pop();
  * Probe one package.
  * @returns a cell: the verdict, what it registered, and how to reproduce it.
  */
-export async function probePackage({ target: rawTarget, dsh, stub, tools = false, keep = false }) {
+export async function probePackage({ target: rawTarget, dsh, stub, tools = false, keep = false, mode = 'headless' }) {
   const target = existsSync(rawTarget) ? resolve(rawTarget) : rawTarget;
   const home = mkdtempSync(join(tmpdir(), 'dsh-probe-'));
   const cell = {
@@ -176,17 +214,20 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     entries: [],
     durationMs: 0,
     note: '',
-    composition: 'headless',
+    composition: mode,
     tools: undefined,
     systemPrompt: undefined,
     packagesAdded: undefined,
   };
   const started = Date.now();
   const patchPath = join(home, 'probe-patch.yml');
-  const bootArgs = ['--profile', 'headless', ...(tools ? ['--patch', patchPath] : []), 'probe'];
+  const profile = mode === 'web' ? 'web' : 'headless';
   const bootEnv = tools ? { PROBE_API_KEY: 'probe' } : {};
+  const bootArgs = mode === 'web'
+    ? ['--profile', 'web', '--port', '0', '--no-open']
+    : ['--profile', 'headless', ...(tools ? ['--patch', patchPath] : []), 'probe'];
 
-  if (tools) {
+  if (tools && mode !== 'web') {
     writeFileSync(patchPath, [
       '- id: llm-deepseek',
       '  name: "@deepseek-ai/dsh-llm-deepseek-api-key"',
@@ -199,15 +240,18 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
 
   try {
     // 1. lay the profile down and capture the baseline the plugin is measured against
-    await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
+    const baseline = mode === 'web'
+      ? await runUntilReady(dsh, home, bootArgs, bootEnv, WEB_READY, { timeoutMs: 60000, graceMs: 1200 })
+      : await capture(() => runDsh(dsh, home, bootArgs, bootEnv)).then((r) => r.out);
+    void baseline;
     if (!readdirSync(home).includes('profiles')) {
       cell.install = 'template-failed';
       return cell;
     }
-    const before = tools ? payloadOf(stub.seen.splice(0)) : undefined;
+    const before = tools && mode !== 'web' ? payloadOf(stub.seen.splice(0)) : undefined;
 
     // 2. install
-    const installed = await capture(() => runDsh(dsh, home, ['plugin', '--profile', 'headless', 'add', target], bootEnv));
+    const installed = await capture(() => runDsh(dsh, home, ['plugin', '--profile', profile, 'add', target], bootEnv));
     if (installed.failed) {
       const rejection = rejectionOf(installed.out);
       if (rejection) {
@@ -222,15 +266,23 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     }
 
     // 3. boot again and read what changed
-    const booted = await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
+    const booted = mode === 'web'
+      ? { out: await runUntilReady(dsh, home, bootArgs, bootEnv, WEB_READY, { timeoutMs: 90000, graceMs: 2500 }), failed: false }
+      : await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
+    if (mode === 'web') cell.ready = WEB_READY.test(booted.out);
     cell.entries = parseInactive(booted.out);
     cell.awaitedServices = awaitedServices(cell.entries);
-    const after = tools ? payloadOf(stub.seen.splice(0)) : undefined;
-    cell.status = classify(booted.out, cell.entries, tools ? Boolean(after) : undefined);
+    const after = tools && mode !== 'web' ? payloadOf(stub.seen.splice(0)) : undefined;
+    cell.status = mode === 'web'
+      ? (cell.entries.some((e) => /Error/.test(e.reason)) ? 'inactive-error'
+        : cell.entries.length > 0 ? 'awaiting-service'
+        : cell.ready ? 'active' : 'boot-failed')
+      : classify(booted.out, cell.entries, tools ? Boolean(after) : undefined);
     cell.note = noteOf(booted.out);
 
-    if (tools) {
-      if (before && after) {  // eslint-disable-line no-unused-vars
+    // Web mode has no task to run, so there is no model request to read tools from.
+    if (tools && mode !== 'web') {
+      if (before && after) {
         const names = (p) => p.tools.map((t) => t.name);
         const b = new Set(names(before));
         const a = new Set(names(after));

@@ -69,6 +69,7 @@ const index = {
       integrity: latest.plugin.integrity,
       cells: own.map((c) => ({
         dsh: c.dsh.version,
+        composition: c.result.composition ?? 'headless',
         status: c.result.status,
         trust: trustOf(c),
         at: c.run.at,
@@ -93,10 +94,16 @@ const BADGE = {
   'template-failed': '#57606a',
 };
 const LABEL = { 'awaiting-service': 'awaiting service' };
+/** Prefer the verdict from the composition that gave the plugin a chance to mount. */
+const RANK = { active: 0, 'awaiting-service': 1, 'rejected-by-host': 2, 'inactive-error': 3, 'boot-failed': 4, 'install-failed': 5, 'template-failed': 6 };
 const rows = plugins.map((name) => {
   const own = cells.filter((c) => c.plugin.name === name);
   const tds = dshVersions.map((v) => {
-    const cell = own.find((c) => c.dsh.version === v);
+    // One plugin may have a cell per composition. Show the most favourable verdict
+    // and name the composition it came from: "awaiting webServer" in headless and
+    // "active" in web are both true, and only together do they mean anything.
+    const forVersion = own.filter((c) => c.dsh.version === v);
+    const cell = forVersion.slice().sort((a, b) => (RANK[a.result.status] ?? 9) - (RANK[b.result.status] ?? 9))[0];
     if (!cell) return '<td class="none">—</td>';
     const color = BADGE[cell.result.status] || '#57606a';
     const added = cell.result.tools?.added ?? [];
@@ -106,8 +113,10 @@ const rows = plugins.map((name) => {
       || cell.result.status;
     const services = (cell.result.awaitedServices ?? []);
     const service = services.length ? '<div class="meta">needs ' + services.join(', ') + '</div>' : '';
+    const composition = (cell.result.composition === 'web' ? 'web' : 'headless');
     return '<td><span class="pill" style="background:' + color + '" title="' + title.replace(/"/g, '&quot;') + '">'
-      + (LABEL[cell.result.status] || cell.result.status) + '</span>' + tools + service + '<div class="meta">' + trustOf(cell) + '</div></td>';
+      + (LABEL[cell.result.status] || cell.result.status) + '</span>' + tools + service
+      + '<div class="meta">' + composition + ' · ' + trustOf(cell) + '</div></td>';
   }).join('');
   const v = own[0].plugin.version;
   return '<tr><th>' + name + '<div class="ver">' + v + '</div></th>' + tds + '</tr>';

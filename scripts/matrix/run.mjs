@@ -32,6 +32,10 @@ const concurrency = Number(argOf('--concurrency', '4'));
 const force = has('--force');
 const keep = has('--keep');
 const useTools = !has('--no-tools');
+// headless gives the tool inventory; web gives a faithful composition for plugins
+// that need web-surface services. "both" runs each cell twice.
+const modeArg = (argOf('--mode', 'both') || 'both').split(',').filter(Boolean);
+const modes = modeArg.includes('both') ? ['headless', 'web'] : modeArg;
 const outDir = argOf('--out', join(ROOT, 'matrix/cells'));
 const cacheRoot = argOf('--cache', join(ROOT, '.matrix-cache'));
 
@@ -53,7 +57,7 @@ if (targets.length === 0) {
 }
 
 const sanitize = (name) => name.replace(/^@/, '').replace(/[^a-z0-9.-]/gi, '_');
-const cellPath = (name, version) => join(outDir, sanitize(name), version + '.json');
+const cellPath = (name, version, mode) => join(outDir, sanitize(name), version + (mode === 'web' ? '+web' : '') + '.json');
 
 /** Pin the artifact the way packages.json does, so a cell names an exact tarball. */
 async function artifactOf(name) {
@@ -72,26 +76,28 @@ for (const version of versions) dshList.push(await resolveDsh(version, cacheRoot
 
 const tasks = [];
 for (const target of targets) {
-  for (const dsh of dshList) tasks.push({ target, dsh });
+  for (const dsh of dshList) {
+    for (const mode of modes) tasks.push({ target, dsh, mode });
+  }
 }
 
 const summary = [];
 let done = 0;
 async function runCell(task) {
-  const { target, dsh } = task;
-  const path = cellPath(target.name, dsh.version);
+  const { target, dsh, mode } = task;
+  const path = cellPath(target.name, dsh.version, mode);
   if (!force && existsSync(path)) {
     done += 1;
     const cell = JSON.parse(readFileSync(path, 'utf8'));
-    summary.push({ plugin: target.name, dsh: dsh.version, status: cell.result.status, tools: cell.result.tools?.added?.length ?? 0, cached: true });
-    process.stdout.write('[' + done + '/' + tasks.length + '] cached  ' + target.name + ' x ' + dsh.version + '\n');
+    summary.push({ plugin: target.name, dsh: dsh.version, mode, status: cell.result.status, tools: cell.result.tools?.added?.length ?? 0, cached: true });
+    process.stdout.write('[' + done + '/' + tasks.length + '] cached  ' + target.name + ' x ' + dsh.version + ' [' + mode + ']\n');
     return;
   }
   const artifact = await artifactOf(target.name);
-  const stub = useTools ? await startStub() : undefined;
+  const stub = useTools && mode !== 'web' ? await startStub() : undefined;
   let cell;
   try {
-    cell = await probePackage({ target: target.name, dsh, stub, tools: useTools, keep });
+    cell = await probePackage({ target: target.name, dsh, stub, tools: useTools, keep, mode });
   } catch (error) {
     cell = { status: 'boot-failed', install: 'crashed', entries: [], durationMs: 0, note: String(error.message).slice(0, 300) };
   } finally {
@@ -100,8 +106,8 @@ async function runCell(task) {
   const record = {
     schemaVersion: 1,
     plugin: { name: target.name, version: artifact.version, integrity: artifact.integrity, local: artifact.local },
-    dsh: { version: dsh.version, source: dsh.kind },
-    probe: { tool: 'dsh-plugin-lint/probe', capabilities: useTools },
+    dsh: { version: dsh.version, source: dsh.kind, profile: mode === 'web' ? 'web' : 'headless' },
+    probe: { tool: 'dsh-plugin-lint/probe', mode, capabilities: useTools && mode !== 'web' },
     run: { at: new Date().toISOString(), durationMs: cell.durationMs, os: process.platform + '-' + process.arch, node: process.version, trust: 'verified' },
     result: {
       status: cell.status,
@@ -115,13 +121,13 @@ async function runCell(task) {
       clientHalf: 'not-covered',
     },
     evidence: { note: cell.note, install: cell.install },
-    reproduce: { command: 'node scripts/probe-boot.mjs ' + target.name + (useTools ? ' --tools' : '') + ' --dsh ' + dsh.version },
+    reproduce: { command: 'node scripts/probe-boot.mjs ' + target.name + (useTools && mode !== 'web' ? ' --tools' : '') + (mode === 'web' ? ' --mode web' : '') + ' --dsh ' + dsh.version },
   };
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(record, null, 2) + '\n');
   done += 1;
-  summary.push({ plugin: target.name, dsh: dsh.version, status: cell.status, tools: cell.tools?.added?.length ?? 0, cached: false });
-  process.stdout.write('[' + done + '/' + tasks.length + '] ' + cell.status.padEnd(16) + target.name + ' x ' + dsh.version
+  summary.push({ plugin: target.name, dsh: dsh.version, mode, status: cell.status, tools: cell.tools?.added?.length ?? 0, cached: false });
+  process.stdout.write('[' + done + '/' + tasks.length + '] ' + cell.status.padEnd(16) + target.name + ' x ' + dsh.version + ' [' + mode + ']'
     + '  ' + (cell.durationMs / 1000).toFixed(1) + 's'
     + (cell.tools?.added?.length ? '  +' + cell.tools.added.length + ' tools' : '') + '\n');
 }
