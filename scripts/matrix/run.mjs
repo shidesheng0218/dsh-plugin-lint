@@ -105,6 +105,9 @@ async function runCell(task) {
     run: { at: new Date().toISOString(), durationMs: cell.durationMs, os: process.platform + '-' + process.arch, node: process.version, trust: 'verified' },
     result: {
       status: cell.status,
+      composition: cell.composition,
+      awaitedServices: cell.awaitedServices,
+      rejection: cell.rejection,
       entries: cell.entries,
       tools: cell.tools,
       systemPrompt: cell.systemPrompt,

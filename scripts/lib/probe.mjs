@@ -125,10 +125,34 @@ export function parseInactive(text) {
  */
 export function classify(bootText, entries, toolPayloadCaptured) {
   if (entries.some((e) => /Error/.test(e.reason))) return 'inactive-error';
-  if (entries.length > 0) return 'inactive-pending';
+  // "awaiting-service" is NOT a failure. Measured on 2026-10-13: every pending
+  // plugin in the smoke sample was waiting for a service the headless profile does
+  // not provide (webServer, connection, agentPresets), so this verdict says
+  // "cannot be tested in this composition", not "broken".
+  if (entries.length > 0) return 'awaiting-service';
   if (toolPayloadCaptured === true) return 'active';
   if (toolPayloadCaptured === false) return 'boot-failed';
   return /MISSING_CREDENTIAL/.test(bootText) ? 'active' : 'boot-failed';
+}
+
+/** The services a pending entry is waiting for, so a reader can judge the reason. */
+export function awaitedServices(entries) {
+  const out = [];
+  for (const entry of entries) {
+    const m = /waiting for service:\s*([^)\s]+)/.exec(entry.reason || '');
+    if (m) out.push(m[1]);
+  }
+  return [...new Set(out)];
+}
+
+/**
+ * The host refuses some installs itself, with the DSH version named in the
+ * reason. That is a stronger verdict than anything this probe can produce, so it
+ * gets its own status rather than being filed as an environment failure.
+ */
+export function rejectionOf(installText) {
+  const m = /installation rejected:\s*([^\n]+)/.exec(installText);
+  return m ? m[1].trim().slice(0, 400) : undefined;
 }
 
 export function noteOf(text) {
@@ -152,6 +176,7 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     entries: [],
     durationMs: 0,
     note: '',
+    composition: 'headless',
     tools: undefined,
     systemPrompt: undefined,
     packagesAdded: undefined,
@@ -184,8 +209,14 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     // 2. install
     const installed = await capture(() => runDsh(dsh, home, ['plugin', '--profile', 'headless', 'add', target], bootEnv));
     if (installed.failed) {
-      cell.install = 'failed';
-      cell.status = 'install-failed';
+      const rejection = rejectionOf(installed.out);
+      if (rejection) {
+        cell.status = 'rejected-by-host';
+        cell.rejection = rejection;
+      } else {
+        cell.install = 'failed';
+        cell.status = 'install-failed';
+      }
       cell.note = noteOf(installed.out);
       return cell;
     }
@@ -193,6 +224,7 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     // 3. boot again and read what changed
     const booted = await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
     cell.entries = parseInactive(booted.out);
+    cell.awaitedServices = awaitedServices(cell.entries);
     const after = tools ? payloadOf(stub.seen.splice(0)) : undefined;
     cell.status = classify(booted.out, cell.entries, tools ? Boolean(after) : undefined);
     cell.note = noteOf(booted.out);
