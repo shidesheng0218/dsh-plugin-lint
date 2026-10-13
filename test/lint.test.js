@@ -1,8 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { lintPackage } from '../src/index.js';
 import { maskSource } from '../src/mask.js';
 
@@ -202,6 +204,35 @@ test('every report carries the checks it ran and its limits', () => {
   assert.ok(report.checks >= 11);
   assert.ok(report.limits.length >= 3);
   assert.deepEqual(Object.keys(report.summary).sort(), ['error', 'info', 'warn']);
+});
+
+test('the CLI lints every package inside a container directory', () => {
+  // Measured failure that motivated this: CI pointed the tool at a folder of two
+  // plugins and the run refused the whole folder.
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-lint-container-'));
+  for (const name of ['alpha', 'beta']) {
+    mkdirSync(join(dir, name), { recursive: true });
+    writeFileSync(join(dir, name, 'package.json'), JSON.stringify(base({ name })));
+    writeFileSync(join(dir, name, 'index.js'), 'export function apply() {}');
+  }
+  const cli = fileURLToPath(new URL('../bin/dsh-plugin-lint.mjs', import.meta.url));
+  const out = execFileSync(process.execPath, [cli, dir, '--quiet', '--no-color'], { encoding: 'utf8' });
+  rmSync(dir, { recursive: true, force: true });
+  assert.match(out, /alpha:/);
+  assert.match(out, /beta:/);
+});
+
+test('the CLI refuses a directory that holds no package', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-lint-empty-'));
+  const cli = fileURLToPath(new URL('../bin/dsh-plugin-lint.mjs', import.meta.url));
+  let code = 0;
+  try {
+    execFileSync(process.execPath, [cli, dir, '--quiet'], { encoding: 'utf8', stdio: 'pipe' });
+  } catch (error) {
+    code = error.status;
+  }
+  rmSync(dir, { recursive: true, force: true });
+  assert.equal(code, 2);
 });
 
 test('maskSource blanks comments but keeps string literals and line numbers', () => {

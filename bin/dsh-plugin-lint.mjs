@@ -1,12 +1,34 @@
 #!/usr/bin/env node
-import { resolve } from 'node:path';
+import { existsSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 import { lintPackage, formatText, toSarif } from '../src/index.js';
+
+/**
+ * A directory without its own package.json is treated as a container: every
+ * immediate subdirectory that is a package gets linted. Monorepos and fixture
+ * folders are the reason — measured: CI pointed the tool at a folder of two
+ * plugins and it refused the whole run.
+ */
+function expandTargets(dir) {
+  if (existsSync(join(dir, 'package.json'))) return [dir];
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { entries = []; }
+  const packages = entries
+    .filter((e) => e.isDirectory() && existsSync(join(dir, e.name, 'package.json')))
+    .map((e) => join(dir, e.name));
+  if (packages.length === 0) fail('not a package directory (no package.json): ' + dir);
+  return packages;
+}
 
 const USAGE = [
   'dsh-plugin-lint — conformance checks for DeepSeek Harness plugins',
   '',
   'Usage',
   '  dsh-plugin-lint [dir ...] [options]',
+  '',
+  'A directory without its own package.json is treated as a container, and every',
+  'immediate subdirectory that is a package is linted.',
+  '',
   '',
   'Options',
   '  --json                 machine-readable report on stdout',
@@ -47,10 +69,12 @@ function fail(message) {
 const options = parseArgs(process.argv.slice(2));
 const reports = [];
 for (const dir of options.dirs) {
-  try {
-    reports.push(lintPackage(resolve(dir), { dshVersion: options.dshVersion }));
-  } catch (error) {
-    fail(error.message);
+  for (const target of expandTargets(resolve(dir))) {
+    try {
+      reports.push(lintPackage(target, { dshVersion: options.dshVersion }));
+    } catch (error) {
+      fail(error.message);
+    }
   }
 }
 
