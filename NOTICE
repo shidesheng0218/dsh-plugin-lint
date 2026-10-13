@@ -1,0 +1,13 @@
+dsh-plugin-lint
+Copyright 2026 the dsh-plugin-lint authors
+
+This product includes data derived from the DeepSeek Harness distribution:
+
+  src/data/event-types.json — the session event type catalog, harvested from
+  public `session.append(...)` call sites in the DeepSeek Harness packages.
+  DeepSeek Harness is licensed under the MIT License.
+  https://github.com/deepseek-ai/deepseek-harness
+
+The rule set in src/rules/ encodes practices documented in the DeepSeek Harness
+plugin-development reference (MIT). Each rule cites its source document in the
+`doc` field so readers can verify the claim against the upstream text.

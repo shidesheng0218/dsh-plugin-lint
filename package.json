@@ -1,0 +1,42 @@
+{
+  "name": "dsh-plugin-lint",
+  "version": "0.0.1",
+  "description": "Conformance and compatibility checks for DeepSeek Harness (DSH) plugins — factual, evidence-backed, zero-config.",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "lint",
+    "conformance",
+    "compatibility"
+  ],
+  "homepage": "https://github.com/<owner>/dsh-plugin-lint",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "exports": {
+    ".": "./src/index.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "dsh-plugin-lint": "./bin/dsh-plugin-lint.mjs"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "e2e:official": "node scripts/e2e-official.mjs",
+    "harvest:events": "node scripts/harvest-event-types.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/<owner>/dsh-plugin-lint.git"
+  }
+}
