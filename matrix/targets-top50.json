@@ -1,0 +1,428 @@
+{
+  "$comment": "Top 50 published community plugins by monthly downloads, from the same M2 run that produced reports/2026-10-13. Artifacts pinned by dist.integrity.",
+  "source": "reports/2026-10-13/raw.json",
+  "count": 50,
+  "targets": [
+    {
+      "name": "billion-context",
+      "version": "0.1.196",
+      "integrity": "sha512-buEmhJssvY5l4KF/7nO+41lsP62pW2j+RYDU/Xi+VDF865yBcyfLhlWdXefYhEJrxO8T4ewvKNtgEZ67hzaqOg==",
+      "declared": [],
+      "downloads": 1067151,
+      "category": "session"
+    },
+    {
+      "name": "dshmarket",
+      "version": "1.66.18",
+      "integrity": "sha512-T3Lyr3521t9e+4oLa+c0YpjUs0mm1Ec1ghIM8NMT68W7eTDOwc8M6478YXvxK73q/CPqR51b/bLY/AGSF+64Ww==",
+      "declared": [],
+      "downloads": 551559,
+      "category": "market"
+    },
+    {
+      "name": "@michengai/dsh-codex-ui",
+      "version": "1.1.36",
+      "integrity": "sha512-tiFwYPK4ypT9Idk7IfPWG2emxTknCKsEs4+7HUXvKCJGHdAJY3s2uWh+TmtmDCnLUdUY9bGuQX80xwvUIN30Pg==",
+      "declared": [],
+      "downloads": 262091,
+      "category": "ui"
+    },
+    {
+      "name": "dsh-better-sidebar",
+      "version": "0.25.0",
+      "integrity": "sha512-5dro5VDpkrnWBO5jNff6Kzt8UlniZEWwXFqsl+wptlqnGMC4PrdJQ4Sd3+tLU8LPKYH8dDI00Dd5IC3FtH/erA==",
+      "declared": [],
+      "downloads": 232502,
+      "category": "ui"
+    },
+    {
+      "name": "@michengai/dsh-skills-manager",
+      "version": "1.1.17",
+      "integrity": "sha512-s+/9KNSscfpwynovW7RVgaDxzTPK/M2gjC7Bp3di/4eEWVBB9iOoaMnEq9gKatg+8/xSrufLuYVWt4MWA6fYMw==",
+      "declared": [],
+      "downloads": 201112,
+      "category": "dev"
+    },
+    {
+      "name": "@michengai/dsh-archive-manager",
+      "version": "1.0.17",
+      "integrity": "sha512-YlLskV8ObKL5+rDEF86MOxH5LwKczCTwhRvyMfwI2Tdv/awM3Vk/8YY+oxI6CcaXNbsZAURaaYUOAAHDbvb4Yg==",
+      "declared": [],
+      "downloads": 181587,
+      "category": "session"
+    },
+    {
+      "name": "@linxin666/dsh-client-ui-skill-explorer",
+      "version": "0.4.6",
+      "integrity": "sha512-2E6IQvFd5OL/rOiu4QAXob7Kk4OQo7ONYFaLM19iUncXaKgViio6pIl1RK02PqRMwEGYTgpL0B3xAkebc2qoqw==",
+      "declared": [],
+      "downloads": 161304,
+      "category": "skill"
+    },
+    {
+      "name": "@linxin666/dsh-pet",
+      "version": "0.4.6",
+      "integrity": "sha512-BDoqAFFfyTwXJS9AXvw6CS1QM4lsJZB8F5aHvV6kYYIeNwzIYADyFLGdLq7bqEG54WcKO0eRd6jI/3UyPN2eaQ==",
+      "declared": [],
+      "downloads": 154201,
+      "category": "fun"
+    },
+    {
+      "name": "dsh-whale-widget",
+      "version": "0.4.2",
+      "integrity": "sha512-aGDUfd3b2Abv4PoUn1KtnlasOIkoqgvIOR2+rAIEPDOt1qlHB7emlTq+4zdyoV5ZiicS+tkugPk86GyVUoDggQ==",
+      "declared": [],
+      "downloads": 152232,
+      "category": "ui"
+    },
+    {
+      "name": "@linxin666/dsh-remote-web-ui",
+      "version": "0.4.6",
+      "integrity": "sha512-NFE7FKFtv37fZ+59lennRL0680lSqC6Bzy9971KHoIfRTCH20D25jPJy+XYOy5ew69KdonUZBf774Ecf6TYp0Q==",
+      "declared": [],
+      "downloads": 151682,
+      "category": "remote"
+    },
+    {
+      "name": "@michengai/dsh-agency-agents",
+      "version": "1.0.17",
+      "integrity": "sha512-fwrQU6Ty2xkuh+qCaXzFVJoqSSFpHZd7qhmJPe/68EuJDQdy7mZWzYq4e4UhamF7zwSRtj4qbGA/rpOapm+fLQ==",
+      "declared": [],
+      "downloads": 150988,
+      "category": "skill"
+    },
+    {
+      "name": "@linxin666/dsh-client-ui-task-board",
+      "version": "0.4.6",
+      "integrity": "sha512-MPfPb14efnS3/yPqSe2NDPYuyJrwqHM9f6+W2BS9curJ7zEnXbuGS+OAQkjV529Xcg+vSj0WflWC/YC32kyAWA==",
+      "declared": [],
+      "downloads": 150797,
+      "category": "ui"
+    },
+    {
+      "name": "dsh-context",
+      "version": "0.69.1",
+      "integrity": "sha512-DolHfuqxJCwcKiXawstVlSyc3ew6OZq+nGhp8n+9OT9+wbNg9m2H+vA79ex36Tx6fxmJNuVlaErtViLykyuI3A==",
+      "declared": [
+        "0.1.7-rc.2",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 140294,
+      "category": "usage"
+    },
+    {
+      "name": "@linxin666/dsh-client-ui-git-graph",
+      "version": "0.4.6",
+      "integrity": "sha512-TAqLTKc0sDsOSqSp61phEXthnhMXZvildDKkP4unQbos1t/q8KJx/1M8HH8f2CqXAtL3XtoaY1uviJCyP4pB9Q==",
+      "declared": [],
+      "downloads": 140046,
+      "category": "git"
+    },
+    {
+      "name": "@michengai/dsh-im-connect",
+      "version": "0.1.74",
+      "integrity": "sha512-MC4/QNAjYSpEj2JkqfYNd53KukB2VlJSPMlYjPoc8MGSk4Pm/A7C8ENVPk2P21WLxxHYv25+NHLP6C78gJZbLA==",
+      "declared": [],
+      "downloads": 137520,
+      "category": "notify"
+    },
+    {
+      "name": "@linxin666/dsh-ssh",
+      "version": "0.4.6",
+      "integrity": "sha512-JtfDtC194sgBiPuAeqUG0EB5s+hixrwGxpb7ALXmjSbIHt9eebdG2xwU0yvVLLJTzoBLOeCx5fIN0hTcja+0vA==",
+      "declared": [],
+      "downloads": 125190,
+      "category": "remote"
+    },
+    {
+      "name": "@michengai/dsh-automation",
+      "version": "0.1.63",
+      "integrity": "sha512-/dX57nlb0LvZoIw9ecqLogbAbDpGFoJz4tffx9vMgmG4ujbD4rgli9DGaMeO0gGyhIPthXMR7J+OTesbAZ2/ew==",
+      "declared": [],
+      "downloads": 121977,
+      "category": "workflow"
+    },
+    {
+      "name": "@linxin666/dsh-web-all",
+      "version": "0.4.6",
+      "integrity": "sha512-Y9cPrvkblE76ISH+isO0V7itsRl9QeaQnD7UD8N6qmCPDSguHmM8h26VXBDwI+eXSvIrJhvWIPI2cmrGFB1o3w==",
+      "declared": [],
+      "downloads": 119821,
+      "category": "ui"
+    },
+    {
+      "name": "dsh-cost-meter",
+      "version": "1.8.24",
+      "integrity": "sha512-2xUGX1yTmqrFDjcWqX8UmuAQS+IwXc6cPprKOUdK7RQ1o/YxIk3Gcgvgucd+fOn6fpApzEjcw6AVbJGtLagOIw==",
+      "declared": [
+        "0.1.2-alpha.3",
+        "0.1.2-alpha.4",
+        "0.1.2-alpha.5",
+        "0.1.2-rc.1",
+        "0.1.3-alpha.1",
+        "0.1.3-alpha.2",
+        "0.1.5-alpha.1",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 104024,
+      "category": "usage"
+    },
+    {
+      "name": "@liustack/modlens",
+      "version": "3.26.6",
+      "integrity": "sha512-Spn5ieInoNvC0r/uqKqljzNA/bECP/ZuI7czUf84hqat5y7hhr/BH5fCPaG0kHbcuW4vm3E93kJXfFXcKaUXtg==",
+      "declared": [],
+      "downloads": 93097,
+      "category": "vision"
+    },
+    {
+      "name": "@michengai/dsh-btw",
+      "version": "0.1.19",
+      "integrity": "sha512-sCazrDeWjpWtzEB7kgYlIWmUSEZjURQ+FdCEDhmzaiPHU4cdEb/fxIvkWDZ1TZo4TBN3WZi07SV185lbBShChw==",
+      "declared": [],
+      "downloads": 90424,
+      "category": "session"
+    },
+    {
+      "name": "@michengai/dsh-simplify",
+      "version": "0.1.15",
+      "integrity": "sha512-INa8pDrQMqp9gaWi3wKGaMI3ssVOx09pmb+WCuiDML5uIlPbqeQBUTcxJzdDnTXB4Qxx7GqUEMVe/7YGT9mWIg==",
+      "declared": [],
+      "downloads": 81166,
+      "category": "dev"
+    },
+    {
+      "name": "@michengai/dsh-codex-pet",
+      "version": "0.1.17",
+      "integrity": "sha512-eAvJIvIfeDrFUApA6Dh1wFwlC2T4JIAD0iBV0z8rs97o45etRqnTqNHcBiYg/dl4L9PZnHkzg5drUhwabd5f/w==",
+      "declared": [],
+      "downloads": 71664,
+      "category": "fun"
+    },
+    {
+      "name": "@michengai/dsh-code-review",
+      "version": "0.1.14",
+      "integrity": "sha512-x/9UEJvsh2GU1PAvFEnzRbaLBldyO+DlyCvssTZVGvBSqb7rSOwX88X0XxhKVa5MBnCb38WAvUr+YkGxKtzHTQ==",
+      "declared": [],
+      "downloads": 67007,
+      "category": "git"
+    },
+    {
+      "name": "@michengai/dsh-pua",
+      "version": "0.3.27",
+      "integrity": "sha512-ru1pq/48F4C8SDwHAMeZVk07CUR0pVgOT1iZDfUGM9Y65hQONR6VABzMab+FrY/YPkSi0/TFzDENFKjxtijklg==",
+      "declared": [],
+      "downloads": 64955,
+      "category": "agi"
+    },
+    {
+      "name": "@xmanrui/dsh-im",
+      "version": "4.38.2",
+      "integrity": "sha512-8eRbRH2lkAPcFvGZlBTlEuJQFRRzQxDGqE3ZvRMklsKxY1Mmzyb6QRZQNDtbgtDEhi7Vnf+uLZv6RzeNczULRw==",
+      "declared": [
+        "0.2.0-rc.2"
+      ],
+      "downloads": 60032,
+      "category": "notify"
+    },
+    {
+      "name": "@vectorize-io/hindsight-coding-agents",
+      "version": "0.8.1",
+      "integrity": "sha512-Jo70NrIADWbvQAnOZgu3mZZI6wSKNtY7UUvJ+5gy+45cUc+YC2/M7H+GcZ4qEJV62QwO033O3lNmdqpw0RVuDQ==",
+      "declared": [],
+      "downloads": 57359,
+      "category": "memory"
+    },
+    {
+      "name": "dsh-univer-office",
+      "version": "0.3.7",
+      "integrity": "sha512-2eEi35ZzTOZiFQEEuNiF68MKWGKlXhVJiaOwCO5gdgNj0ZA+VesdoRxmT8hhFspbMtPfRp/0CoSo7PwFwBbBWw==",
+      "declared": [],
+      "downloads": 48801,
+      "category": "docs"
+    },
+    {
+      "name": "@nanmicoder/dsh-agent-teams",
+      "version": "0.1.23",
+      "integrity": "sha512-DDH1eFDEomfIDXAQF0DFBZuN37JkVo8PEgCNvQ088xCJ5qt8sSi7sgxD+sLwOOw6aC7GHsyAOmNTWvH3ftAfiw==",
+      "declared": [],
+      "downloads": 48486,
+      "category": "workflow"
+    },
+    {
+      "name": "@deepseek-harness-tui/dsh-tui",
+      "version": "0.14.0",
+      "integrity": "sha512-syU0CLbAoxA97URyhnPFiLbWm3dXrmCR5NCO6mFovRi7mebX2HeEYdhpugEoT9vZ1vpUfE/+uX7xrs6zOGUJ1g==",
+      "declared": [],
+      "downloads": 44975,
+      "category": "ui"
+    },
+    {
+      "name": "dsh-mnemon",
+      "version": "0.5.28",
+      "integrity": "sha512-W5mwrqir1c/f7IoWhFdkvNhS2rkoHwDvaqfMbGprChe1P8pwJeTKWaV3YkBLkEnWffJkwzQiqBifPgzJ2PZzoA==",
+      "declared": [],
+      "downloads": 43384,
+      "category": "memory"
+    },
+    {
+      "name": "dsh-pet",
+      "version": "0.3.6",
+      "integrity": "sha512-Bvhp3AWXvc5/cqz9Veez2ZAm2Qk+UWLkFWeuQupXuKwtoQ7uIbOsOieGw5R0wXMMAwXAf4RuEyYSu5pP0i1FIg==",
+      "declared": [
+        "0.1.7-rc.2",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 42296,
+      "category": "fun"
+    },
+    {
+      "name": "dsh-plugin-wallpaper-engine",
+      "version": "1.3.2",
+      "integrity": "sha512-9SBAims7eL8JqcwedYI5PFxg+hdNoQBuwmACp3Z0RkqY+eW9Qc9t0ypZaetvQPRZi3HmfmdB8Sds7Zs4dcHPkQ==",
+      "declared": [],
+      "downloads": 42240,
+      "category": "theme"
+    },
+    {
+      "name": "dsh-free-search",
+      "version": "0.8.9",
+      "integrity": "sha512-+y5R/II5W0tnLzay4Eh0bhpZrukBvJvaWA61NnXCFI6RMkwRW8r0TXtLrOfYdJmiKwxDWGGMCwn2oNYpouRPXg==",
+      "declared": [
+        "0.1.7-rc.1"
+      ],
+      "downloads": 41782,
+      "category": "browser"
+    },
+    {
+      "name": "@liustack/modsearch",
+      "version": "5.10.6",
+      "integrity": "sha512-M2GhEK1kbyTM3phffRF+DVvm+VS9Z+aWEfuIDkF3BkUCX2MfQNWMqSzVJoeuwjBLGw6h55v7gQhx9MzoUEjQgg==",
+      "declared": [],
+      "downloads": 40443,
+      "category": "browser"
+    },
+    {
+      "name": "@openviking/dsh-memory-plugin",
+      "version": "0.5.24",
+      "integrity": "sha512-RgXkRMnRBcPyQ9ZnKPSddl1f0B//e93RPQV4qwg9VqyDyKBwDdX+LPrvYSTs7Bh3QqXeWR4xUZRL06v1TCueVA==",
+      "declared": [],
+      "downloads": 37107,
+      "category": "memory"
+    },
+    {
+      "name": "@roarpeng/graphflow",
+      "version": "2.3.0",
+      "integrity": "sha512-fPZTgHGPa+kaPHqvDWlhYsRvOFUGSobcvBdqW6xmKbiFqSbnpZawVgp49NeX0wcQ084rYSQsd14zWl8kWcmUHQ==",
+      "declared": [],
+      "downloads": 36127,
+      "category": "tools"
+    },
+    {
+      "name": "dsh-vision-router",
+      "version": "3.0.3",
+      "integrity": "sha512-MfFThX4xXfh5cK2bKD06ku2RHzuhdrntmWcbHH8EeqdomGZeeKnXB19EGNzXhBuKIe3HyqPqadJsnQPEXFlzrg==",
+      "declared": [],
+      "downloads": 34592,
+      "category": "vision"
+    },
+    {
+      "name": "@smalltailqwq/dsh-client-ui-skin-maid-atelier",
+      "version": "0.1.7",
+      "integrity": "sha512-mpKvd3+Lbwv+DFz6b2ZtwrN18s6ChpYaTG3s9yrqw7wX5x72ezVHda0lg6DwKppAJoxsTRanS7V4LmVFsg4Gwg==",
+      "declared": [],
+      "downloads": 33967,
+      "category": "theme"
+    },
+    {
+      "name": "dsh-dream-skin",
+      "version": "10.12.1",
+      "integrity": "sha512-k7iR2LaNFm/89Lu5hu9J1IfzGKCoCz3owpWw72TX7L/DBFiTyC+qz+pmVDQ4WqMU7vsgMfofWoBEd9pQlSrUjQ==",
+      "declared": [],
+      "downloads": 33789,
+      "category": "theme"
+    },
+    {
+      "name": "@changfenhuang/dsh-genui",
+      "version": "0.12.0",
+      "integrity": "sha512-V5VsUaQIYw0ZZFIWcJtjUxAGD4gIK/RZnYjZH8ECRmdzU8uzo7CzrQhcj+IKRWeq/YkrIP9Z6BkXAPayxvni0Q==",
+      "declared": [],
+      "downloads": 33196,
+      "category": "ui"
+    },
+    {
+      "name": "lunheng-article-pipeline",
+      "version": "19.3.0",
+      "integrity": "sha512-zBGsiJ2yoDR0ZkLQgYe8tEEdWGUNxjDyA85XwXI9XI2jwoRfVRy+3iXTUqcRX8NB6pg7uYRPeCx3ftSqrAb38w==",
+      "declared": [],
+      "downloads": 33160,
+      "category": "skill"
+    },
+    {
+      "name": "dsh-my-guardian",
+      "version": "0.4.4",
+      "integrity": "sha512-Fg7V6jf3FH66FE4dCzfIO9djVREaq+HFjRlEBYIJK/VoOc5nmJ/+BtAqNOPFFPOdbxA45QMn/jtFbcIX7z5EMw==",
+      "declared": [],
+      "downloads": 31062,
+      "category": "dev"
+    },
+    {
+      "name": "@furongjun1999/dsh-memory",
+      "version": "0.8.1",
+      "integrity": "sha512-PG9H5tgOWrj+uvmIqiCsoNRfr19XI4G6MxnjgAAyMAB2erp2IqpYeVv6FtV/5JZnDe3BO3Va1PpuDnw5toI/Bg==",
+      "declared": [],
+      "downloads": 28419,
+      "category": "agi"
+    },
+    {
+      "name": "@tt-a1i/archify-dsh",
+      "version": "1.0.0",
+      "integrity": "sha512-ae5L+SyZngy3EzYnWHHfccAYJCZh5e9MTkEBh7mrwTMfpwpFtkIhiOg2vI5xnluCS8CSb+Ne1hi1kOWRQQtGBQ==",
+      "declared": [],
+      "downloads": 28340,
+      "category": "docs"
+    },
+    {
+      "name": "dsh-find-plugin",
+      "version": "0.4.0",
+      "integrity": "sha512-XO0zQb3iHxK7IGGygfiGDxI3t4HUEBNLK4knqYmh8KuT2cbCWzmH+4PViaIgVPsiytC7mXN5p94u5fJc3VNsBw==",
+      "declared": [],
+      "downloads": 27978,
+      "category": "market"
+    },
+    {
+      "name": "dsh-rewind-plugin",
+      "version": "0.15.3",
+      "integrity": "sha512-Ijsb3HN57CvbC9F3hwErG4u4L3Zsk6dJ6AIWBRUCVOCpL+PJ/mQApF4keh+qC8nDhhrqxGZxyMAWr4tKKPCicg==",
+      "declared": [],
+      "downloads": 25773,
+      "category": "session"
+    },
+    {
+      "name": "@wxg-prc-cpg/browser-skill-dsh-plugin",
+      "version": "0.3.2",
+      "integrity": "sha512-Z8m5KmNzCqc83M99q6pSPUwzFYr+RI4F1pQNCHp56rL/97Ogz7Z/YcWGEwYlvfSMWePjcib8aUQNpSVInW35AA==",
+      "declared": [],
+      "downloads": 25001,
+      "category": "browser"
+    },
+    {
+      "name": "dsh-mcp-connector",
+      "version": "0.2.70",
+      "integrity": "sha512-tqe20107w2mvbQ2x1+H21HdxFB345X4a38o5N31LL4IvHe6wJgM758MWNh10FlTjf/yTnU+fegU8+xvL1HXtFg==",
+      "declared": [],
+      "downloads": 23229,
+      "category": "tools"
+    },
+    {
+      "name": "dsh-image-gen",
+      "version": "0.8.7",
+      "integrity": "sha512-WdY5f//QCETUQQuMmDqiuDNBet8I5GM4udaCApTwEE7XfA8Lj4E6ePl4gpE+boH3z7DqVHv0Z0Iy+gH+RLhWnQ==",
+      "declared": [],
+      "downloads": 22103,
+      "category": "workflow"
+    }
+  ]
+}

@@ -120,7 +120,7 @@ async function runCell(task) {
       packagesAdded: cell.packagesAdded,
       clientHalf: 'not-covered',
     },
-    evidence: { note: cell.note, install: cell.install },
+    evidence: { note: cell.note, install: cell.install, installOutput: cell.installOutput },
     reproduce: { command: 'node scripts/probe-boot.mjs ' + target.name + (useTools && mode !== 'web' ? ' --tools' : '') + (mode === 'web' ? ' --mode web' : '') + ' --dsh ' + dsh.version },
   };
   mkdirSync(dirname(path), { recursive: true });

@@ -18,7 +18,7 @@
  *     started ASYNCHRONOUSLY (a synchronous child deadlocks the stub).
  */
 import { execFile, spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -250,19 +250,33 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     }
     const before = tools && mode !== 'web' ? payloadOf(stub.seen.splice(0)) : undefined;
 
-    // 2. install
+    // 2. install. The exit code is NOT the artifact: measured on 2026-10-13, a 200-cell
+    //    run recorded 26 install failures whose profile package.json had in fact been
+    //    updated and whose plugin was on disk. A non-zero exit is only believed after
+    //    the profile has been inspected.
+    const profilePkgPath = join(home, 'profiles', profile, 'package.json');
+    const beforePkg = existsSync(profilePkgPath) ? readFileSync(profilePkgPath, 'utf8') : '';
     const installed = await capture(() => runDsh(dsh, home, ['plugin', '--profile', profile, 'add', target], bootEnv));
     if (installed.failed) {
       const rejection = rejectionOf(installed.out);
-      if (rejection) {
+      const afterPkg = existsSync(profilePkgPath) ? readFileSync(profilePkgPath, 'utf8') : '';
+      const landed = afterPkg !== beforePkg && afterPkg.length > 0;
+      if (rejection && !landed) {
         cell.status = 'rejected-by-host';
         cell.rejection = rejection;
-      } else {
+        cell.note = noteOf(installed.out);
+        return cell;
+      }
+      if (!landed) {
         cell.install = 'failed';
         cell.status = 'install-failed';
+        cell.note = noteOf(installed.out);
+        cell.installOutput = installed.out.slice(-700);
+        return cell;
       }
-      cell.note = noteOf(installed.out);
-      return cell;
+      // The plugin landed, so the non-zero exit was noise (peer-dependency warnings).
+      cell.install = 'ok-with-warnings';
+      cell.installOutput = noteOf(installed.out);
     }
 
     // 3. boot again and read what changed
