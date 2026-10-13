@@ -1,0 +1,15 @@
+{
+  "$comment": "DSH versions the matrix tests against. Pinned explicitly: following latest would make historical cells incomparable.",
+  "versions": [
+    {
+      "version": "0.2.0-rc.2",
+      "channel": "mainline",
+      "note": "the version the desktop app ships"
+    },
+    {
+      "version": "0.2.1-alpha.2",
+      "channel": "frontier",
+      "note": "newest published alpha"
+    }
+  ]
+}

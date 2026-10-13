@@ -1,0 +1,171 @@
+{
+  "$comment": "Smoke sample: every plugin that already declares compatibility with 0.2.0-rc.2. If the matrix reports a failure here, the bug is ours.",
+  "source": "reports/2026-10-13/raw.json, field declaredDsh contains 0.2.0-rc.2",
+  "count": 11,
+  "targets": [
+    {
+      "name": "dsh-context",
+      "version": "0.69.1",
+      "integrity": "sha512-DolHfuqxJCwcKiXawstVlSyc3ew6OZq+nGhp8n+9OT9+wbNg9m2H+vA79ex36Tx6fxmJNuVlaErtViLykyuI3A==",
+      "declared": [
+        "0.1.7-rc.2",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 140294
+    },
+    {
+      "name": "dsh-cost-meter",
+      "version": "1.8.24",
+      "integrity": "sha512-2xUGX1yTmqrFDjcWqX8UmuAQS+IwXc6cPprKOUdK7RQ1o/YxIk3Gcgvgucd+fOn6fpApzEjcw6AVbJGtLagOIw==",
+      "declared": [
+        "0.1.2-alpha.3",
+        "0.1.2-alpha.4",
+        "0.1.2-alpha.5",
+        "0.1.2-rc.1",
+        "0.1.3-alpha.1",
+        "0.1.3-alpha.2",
+        "0.1.5-alpha.1",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 104024
+    },
+    {
+      "name": "@xmanrui/dsh-im",
+      "version": "4.38.2",
+      "integrity": "sha512-8eRbRH2lkAPcFvGZlBTlEuJQFRRzQxDGqE3ZvRMklsKxY1Mmzyb6QRZQNDtbgtDEhi7Vnf+uLZv6RzeNczULRw==",
+      "declared": [
+        "0.2.0-rc.2"
+      ],
+      "downloads": 60032
+    },
+    {
+      "name": "dsh-pet",
+      "version": "0.3.6",
+      "integrity": "sha512-Bvhp3AWXvc5/cqz9Veez2ZAm2Qk+UWLkFWeuQupXuKwtoQ7uIbOsOieGw5R0wXMMAwXAf4RuEyYSu5pP0i1FIg==",
+      "declared": [
+        "0.1.7-rc.2",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 42296
+    },
+    {
+      "name": "dsh-builtin-browser",
+      "version": "0.4.7",
+      "integrity": "sha512-oTzSTctqxAP8ROKXZyRugMaMcoC945kMyL3uJndARTVNCQiMEyBemSV8viKzTzT9cynfeCXRc9lto93lyr5PNA==",
+      "declared": [
+        "0.1.0-rc.8",
+        "0.1.1-rc.1",
+        "0.1.1-rc.2",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2",
+        "0.2.1-alpha.1"
+      ],
+      "downloads": 17672
+    },
+    {
+      "name": "@mars-sea/dsh-commandcode-provider",
+      "version": "0.12.10",
+      "integrity": "sha512-7k+b6qT+ydx8zRzSvvXCr0gauYn583i2jWrsED67zZrKdBDNs9Pa6Zw9+Y1JCls34a5l+UBzCnSByd3z19PkXQ==",
+      "declared": [
+        "0.2.0-rc.2",
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2"
+      ],
+      "downloads": 17524
+    },
+    {
+      "name": "@kenz1117/dsh-ui-usage-billing",
+      "version": "1.4.27",
+      "integrity": "sha512-sH1l9svULvbexJKDkxk2Re3eWecPs2bMsKigQPO1vB51L65mSWykO972GkZcWxCmBsoJn/5As8+JQW8YAvq+zw==",
+      "declared": [
+        "0.1.2-alpha.1",
+        "0.1.2-alpha.2",
+        "0.1.2-alpha.3",
+        "0.1.2-alpha.4",
+        "0.1.2-alpha.5",
+        "0.1.2-rc.1",
+        "0.1.3-alpha.1",
+        "0.1.3-alpha.2",
+        "0.1.5-alpha.1",
+        "0.1.5-alpha.2",
+        "0.1.5-rc.1",
+        "0.1.5-rc.2",
+        "0.1.5-rc.3",
+        "0.1.6-alpha.1",
+        "0.1.6-alpha.2",
+        "0.1.7-alpha.1",
+        "0.1.7-alpha.2",
+        "0.1.7-rc.1",
+        "0.1.7-rc.2",
+        "0.2.0-rc.1",
+        "0.2.0-rc.2",
+        "0.2.1-alpha.1"
+      ],
+      "downloads": 17307
+    },
+    {
+      "name": "@anionex/dsh-vision-toolkit",
+      "version": "0.1.46",
+      "integrity": "sha512-81V9AI0u77D3B9kVrdHvN7x7iOYwgLO/hsdDZNPsZUTELw0eZI2b68zHR5ltQgR9SqTt4umQzuMUgvx1K1sxjQ==",
+      "declared": [
+        "0.1.0-rc.8",
+        "0.1.1-rc.1",
+        "0.1.1-rc.2",
+        "0.1.2-alpha.3",
+        "0.1.2-alpha.4",
+        "0.1.2-alpha.5",
+        "0.1.2-rc.1",
+        "0.1.3-alpha.1",
+        "0.1.3-alpha.2",
+        "0.1.5-alpha.1",
+        "0.1.5-alpha.2",
+        "0.1.5-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 13729
+    },
+    {
+      "name": "@nonamelego/dsh-catppuccin",
+      "version": "0.6.1",
+      "integrity": "sha512-Q4YeeLaiUTNSt2SKK4Kaq+lPUcTjsWjKlAQ/SDdzUaAS+wioKxoaC6jMkEoZkw7ZBxK/WkHj4tXWVBWwc4p2+w==",
+      "declared": [
+        "0.1.5-rc.3",
+        "0.1.7-alpha.1",
+        "0.1.7-alpha.2",
+        "0.1.7-rc.1",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 12524
+    },
+    {
+      "name": "dsh-gitbash-shell",
+      "version": "0.39.0",
+      "integrity": "sha512-TQaRpFnsp4mGjNjSmyvrjbjKmEN6n8WFfQlWCq4A1z0gMUVgKKYcZPSD4KBAFBXN0Hg4Kl0TDuk07RebwPfa0A==",
+      "declared": [
+        "0.2.0-rc.2",
+        "0.2.1-alpha.1",
+        "0.2.1-alpha.2"
+      ],
+      "downloads": 10696
+    },
+    {
+      "name": "dsh-plugin-marketplace",
+      "version": "0.5.2",
+      "integrity": "sha512-7VmTcwptX9+B8WohkF8zscAFEnRBm1BRCGQGgpbmjjdZ6NqOUTSq+WataShVdLaYZjEgjGKO43mwqrIh4t5cng==",
+      "declared": [
+        "0.1.5-rc.2",
+        "0.1.5-rc.3",
+        "0.1.6-alpha.1",
+        "0.1.6-alpha.2",
+        "0.1.7-alpha.1",
+        "0.1.7-alpha.2",
+        "0.1.7-rc.1",
+        "0.1.7-rc.2",
+        "0.2.0-rc.2"
+      ],
+      "downloads": 9988
+    }
+  ]
+}
