@@ -142,7 +142,7 @@ node scripts/matrix/site.mjs
 ```
 
 Measured on 2026-10-13 over 228 cells (57 plugins, two DSH versions, headless and web):
-**17 of 57 plugins get a worse verdict on the newer DSH version and none get better**; 14 are the host refusing the install outright. `billion-context` grows the system prompt by 10,862 characters. See [docs/14](docs/14-top50-results.md).
+**17 of 57 plugins get a worse verdict on the newer DSH version and none get better**; 14 are the host refusing the install outright, and the largest system-prompt growth observed was 10,862 characters. See [docs/09](docs/09-ecosystem-measurements.md) for the aggregate numbers.
 
 Plugin authors can run the same probe from their own CI — [docs/15](docs/15-federation.md):
 
@@ -165,6 +165,17 @@ dsh plugin --profile <profile> add <absolute path to panel/>
 ```
 
 It mounts on both pinned DSH versions in both compositions, and it passes this project's own linter with zero findings — only react comes from the browser module table, no Harness Client package is imported, and colours use --dsw-alias-* tokens with fallbacks. **What the page looks like in a browser is not verified**: no browser control was available, so treat the visual design as unchecked. See [docs/16](docs/16-m5-panel.md).
+
+## Data policy
+
+This repository ships the **tool**, not the results. Any output that names a package — `reports/`, `notify/`, `matrix/cells/`, `matrix/index/`, `site/`, and the panel's matrix snapshot — is generated locally and untracked.
+
+Two reasons, and they point the same way:
+
+1. **Naming a package is a claim about someone's work.** Doing it well means contacting that maintainer first, and that is a decision, not a default.
+2. **Verified data is only meaningful for the environment that produced it.** Whoever runs the probe gets their own answer; a snapshot from our machine is not evidence about theirs.
+
+The aggregate numbers are published, because they describe the ecosystem rather than any one maintainer: see [docs/09](docs/09-ecosystem-measurements.md).
 
 ## Before publishing a report
 
