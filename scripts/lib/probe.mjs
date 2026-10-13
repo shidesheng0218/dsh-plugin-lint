@@ -133,6 +133,9 @@ export async function capture(fn) {
   }
 }
 
+/** An ephemeral localhost token from the web readiness line never belongs in a cell. */
+const redact = (s) => String(s).replace(/token=[^\s&"']+/gi, 'token=<redacted>');
+
 /** Inactive entries are listed under a "did not activate" warning, one per line. */
 export function parseInactive(text) {
   const out = [];
@@ -194,7 +197,7 @@ export function rejectionOf(installText) {
 }
 
 export function noteOf(text) {
-  return text.split('\n').map((l) => l.trim())
+  return redact(text).split('\n').map((l) => l.trim())
     .filter((l) => l && !/MISSING_CREDENTIAL/.test(l) && !/^at /.test(l))
     .slice(0, 3).join(' | ').slice(0, 300);
 }
@@ -271,7 +274,7 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
         cell.install = 'failed';
         cell.status = 'install-failed';
         cell.note = noteOf(installed.out);
-        cell.installOutput = installed.out.slice(-700);
+        cell.installOutput = redact(installed.out).slice(-700);
         return cell;
       }
       // The plugin landed, so the non-zero exit was noise (peer-dependency warnings).

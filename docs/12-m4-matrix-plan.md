@@ -160,7 +160,7 @@ node scripts/matrix/run.mjs --plugins dsh-mnemon,dsh-context --dsh 0.2.0-rc.2 --
 
 ```yaml
 # 插件仓库里的 .github/workflows/dsh-probe.yml（我们生成，作者提交）
-- uses: <owner>/dsh-plugin-lint/.github/actions/probe@v1
+- uses: shidesheng0218/dsh-plugin-lint/.github/actions/probe@v1
   with:
     dsh-version: 0.2.0-rc.2
     tools: true

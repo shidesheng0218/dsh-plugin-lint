@@ -40,8 +40,8 @@ A static checker that reads a plugin package and reports **what it detected**, w
 | --- | --- | --- |
 | [dsh-plugin-doctor](https://github.com/zoahdev/dsh-plugin-doctor) | does the package structure and build hold up? | does not touch builds |
 | [dsh-testkit](https://github.com/iiwish/dsh-testkit) | does it install, run and uninstall on a real host? | only checks artifacts on disk |
-| [dsh-trust-check](https://github.com/<owner>/dsh-trust-check) | what can this plugin touch? | makes no security judgement |
-| [dsh-my-guardian](https://github.com/<owner>/dsh-my-guardian) | what happens after it breaks? | does not recover anything |
+| [dsh-trust-check](https://github.com/liuwenji007/dsh-trust-check) | what can this plugin touch? | makes no security judgement |
+| [dsh-my-guardian](https://github.com/baosfeng/my-dsh-plugins) | what happens after it breaks? | does not recover anything |
 | **dsh-plugin-lint** | **is it written the way the reference says, and will it survive publishing?** | — |
 
 ## Why this exists
@@ -147,7 +147,7 @@ Measured on 2026-10-13 over 228 cells (57 plugins, two DSH versions, headless an
 Plugin authors can run the same probe from their own CI — [docs/15](docs/15-federation.md):
 
 ```yaml
-- uses: <owner>/dsh-plugin-lint/.github/actions/probe@v1
+- uses: shidesheng0218/dsh-plugin-lint/.github/actions/probe@v1
   with:
     target: .
     dsh-versions: 0.2.0-rc.2,0.2.1-alpha.2

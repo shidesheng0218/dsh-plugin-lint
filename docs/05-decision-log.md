@@ -33,7 +33,7 @@
 
 - **状态**：待定
 - **npm 包名**：`dsh-plugin-lint`（未占用检查待做）
-- **GitHub 仓库 / owner**：**待你确定**——`package.json` 与 `README.md` 里目前是 `<owner>` 占位符，发布前必须替换。
+- **GitHub 仓库 / owner**：**待你确定**——`package.json` 与 `README.md` 里目前是 `shidesheng0218` 占位符，发布前必须替换。
 - **License**：Apache-2.0 ✅
 
 ---

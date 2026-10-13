@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: <owner>/dsh-plugin-lint/.github/actions/probe@v1
+      - uses: shidesheng0218/dsh-plugin-lint/.github/actions/probe@v1
         with:
           target: .                 # 本仓库就是插件
           dsh-versions: 0.2.0-rc.2,0.2.1-alpha.2

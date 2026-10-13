@@ -10,7 +10,7 @@
     "conformance",
     "compatibility"
   ],
-  "homepage": "https://github.com/<owner>/dsh-plugin-lint",
+  "homepage": "https://github.com/shidesheng0218/dsh-plugin-lint",
   "license": "Apache-2.0",
   "type": "module",
   "engines": {
@@ -37,6 +37,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/<owner>/dsh-plugin-lint.git"
+    "url": "git+https://github.com/shidesheng0218/dsh-plugin-lint.git"
   }
 }
