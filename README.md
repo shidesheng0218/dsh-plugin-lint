@@ -155,6 +155,17 @@ Plugin authors can run the same probe from their own CI — [docs/15](docs/15-fe
 
 Self-reported cells are never presented as ours: they are sampled, re-run, and either promoted to `verified` or marked `disputed` with both verdicts kept.
 
+## The panel
+
+panel/ is a real DSH plugin: a settings section listing what this profile has installed and how each plugin fares across DSH versions, read from the matrix snapshot.
+
+```bash
+node scripts/matrix/bundle-panel-data.mjs
+dsh plugin --profile <profile> add <absolute path to panel/>
+```
+
+It mounts on both pinned DSH versions in both compositions, and it passes this project's own linter with zero findings — only react comes from the browser module table, no Harness Client package is imported, and colours use --dsw-alias-* tokens with fallbacks. **What the page looks like in a browser is not verified**: no browser control was available, so treat the visual design as unchecked. See [docs/16](docs/16-m5-panel.md).
+
 ## Before publishing a report
 
 Every report names packages, so the project follows one rule (ADR D-001): **name the package, state only what was detected, cite the source, and notify the maintainer first.**

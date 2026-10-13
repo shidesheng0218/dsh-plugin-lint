@@ -23,7 +23,10 @@ const argOf = (name, fallback) => {
 const keep = argv.includes('--keep');
 const withTools = argv.includes('--tools');
 const dshVersion = argOf('--dsh', undefined);
-const mode = argOf('--mode', 'headless');
+const modeArg = argOf('--mode', 'headless');
+// 'both' expands the same way the matrix runner expands it, so one flag means one
+// thing across the tool.
+const modes = modeArg === 'both' ? ['headless', 'web'] : [modeArg];
 const VALUE_FLAGS = ['--dsh', '--mode', '--cache'];
 const packages = argv.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(argv[i - 1]));
 if (packages.length === 0) {
@@ -38,14 +41,16 @@ console.log('probing with ' + dsh.id + (withTools ? ' + stub provider' : ''));
 
 const results = [];
 for (const name of packages) {
-  const cell = await probePackage({ target: name, dsh, stub, tools: withTools, keep, mode });
-  results.push({ package: name, ...cell });
-  console.log(cell.status.padEnd(16) + name + '  (' + cell.durationMs + ' ms)');
+  for (const mode of modes) {
+  const cell = await probePackage({ target: name, dsh, stub: mode === 'web' ? undefined : stub, tools: withTools, keep, mode });
+  results.push({ package: name, mode, ...cell });
+  console.log(cell.status.padEnd(16) + name + ' [' + mode + ']  (' + cell.durationMs + ' ms)');
   for (const e of cell.entries) console.log('                 ' + e.id + ': ' + e.reason);
   if (cell.tools && !cell.tools.error) {
     console.log('                 tools ' + cell.tools.baseline + ' -> ' + cell.tools.total
       + (cell.tools.added.length ? '  +' + cell.tools.added.length + ': ' + cell.tools.added.join(', ') : '  (none)'));
     console.log('                 system prompt ' + cell.systemPrompt.baselineChars + ' -> ' + cell.systemPrompt.chars + ' chars');
+  }
   }
 }
 if (stub) stub.server.close();

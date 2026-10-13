@@ -1,0 +1,5 @@
+# The panel is one plugin row: the package main entry is the host half, and the
+# dsh.client declaration makes the web app load ./client.js as the browser half.
+- insert:
+    - id: dsh-plugin-lint-panel
+      name: 'dsh-plugin-lint-panel'
