@@ -30,6 +30,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # The report is rewritten on every run, so a run that checked nothing
+          # would otherwise open an empty pull request every week.
+          checked=$(node -e "process.stdout.write(String(require('./matrix/index/verification.json').checked))")
+          if [ "$checked" = "0" ]; then
+            git checkout -- matrix/index/verification.json 2>/dev/null || true
+            echo "no self-reported cells to verify"
+            exit 0
+          fi
           if [ -z "$(git status --porcelain)" ]; then
             echo "nothing to verify this week"
             exit 0
