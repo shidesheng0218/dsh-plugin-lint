@@ -31,10 +31,26 @@
 
 ## D-003 命名与发布
 
-- **状态**：待定
-- **npm 包名**：`dsh-plugin-lint`（未占用检查待做）
-- **GitHub 仓库 / owner**：**待你确定**——`package.json` 与 `README.md` 里目前是 `shidesheng0218` 占位符，发布前必须替换。
+- **状态**：已建仓，**未公开发布**
+- **npm 包名**：`dsh-plugin-lint`（尚未发布）
+- **GitHub 仓库**：<https://github.com/shidesheng0218/dsh-plugin-lint> — **PRIVATE**，默认分支 `main`
 - **License**：Apache-2.0 ✅
+
+### 为什么先建私有仓库
+
+仓库里包含三类**点名到包**的数据，按 D-001 在通知完成前不得公开：
+
+| 路径 | 内容 |
+| --- | --- |
+| `reports/2026-10-13/` | 66 个包的静态检查结论 |
+| `notify/` | 51 位维护者的联系方式与逐包结论 |
+| `matrix/cells/` | 228 格兼容性裁决（含 17 个"升级变差"） |
+
+通知期（≥14 天）结束后再转 public，届时数据本身已是"已通知"状态。
+
+### 首次真实 CI 的收获
+
+推送后 GitHub Actions 在 Linux runner 上跑通，**第一次执行就抓到一个真实缺陷**：CI 把装着两个插件的**父目录**传给了 linter，而工具拒绝整个目录（父目录自己没有 package.json）。已修：无 package.json 的目录按"容器"处理、逐个检查子包，并补了两个集成测试。CI 现为绿色（19 秒）。
 
 ---
 
