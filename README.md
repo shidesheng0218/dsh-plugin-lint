@@ -119,6 +119,17 @@ node scripts/build-report.mjs --top 100        # ecosystem coupling & declaratio
 node scripts/build-contact-list.mjs reports/<date>   # who to notify before publishing
 ```
 
+Host-half capability probes go further than static analysis — they boot a throwaway profile and read what the model actually receives:
+
+```bash
+node scripts/probe-boot.mjs dsh-mnemon --tools
+#   active  (3732 ms)
+#   tools 24 -> 41  +17: mnemon_remember, mnemon_recall, mnemon_forget, ...
+#   system prompt 2640 -> 7153 chars
+```
+
+Mount failures are warnings and the process still exits 0, so the exit code is never the signal. See [docs/11-m4-capability-probe.md](docs/11-m4-capability-probe.md).
+
 Each run writes `reports/<date>/`: `REPORT.md` (human), `raw.json` (every finding), `packages.json` (artifacts pinned by `dist.integrity`). Reports name published packages, so they are **drafts until every named maintainer has been contacted** — see [docs/08-author-notification.md](docs/08-author-notification.md).
 
 ## Development
