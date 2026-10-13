@@ -95,7 +95,7 @@ export async function runDsh(dsh, home, args, env = {}) {
  * The web profile serves until killed, so readiness is a sentinel line rather
  * than an exit: "dsh web: http://127.0.0.1:<port>/?token=…". We stop as soon as
  * it appears (plus a short grace period) because a mounted plugin may start doing
- * work of its own — measured: dsh-pet began downloading a 116 MB Electron.
+ * work of its own — one probed plugin started downloading a 116 MB Electron build.
  */
 export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
   const timeoutMs = options.timeoutMs ?? 90000;

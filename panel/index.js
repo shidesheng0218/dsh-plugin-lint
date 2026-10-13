@@ -16,7 +16,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const INDEX_PATH = join(HERE, 'data', 'matrix-index.json');
+/**
+ * The matrix snapshot is generated locally (scripts/matrix/bundle-panel-data.mjs)
+ * and is deliberately not tracked: it names packages and carries verdicts, which
+ * belongs to whoever ran the probe, not to this repository. A profile without it
+ * still renders, with every plugin reported as not covered.
+ */
+const indexPath = () => process.env.DSH_PLUGIN_LINT_INDEX || join(HERE, 'data', 'matrix-index.json');
 const ROUTE = '/api/dsh-plugin-lint/panel';
 
 function readJson(path) {
@@ -54,7 +60,7 @@ function installedBundles() {
 }
 
 function payload() {
-  const index = readJson(INDEX_PATH);
+  const index = readJson(indexPath());
   const installed = installedBundles();
   const byPlugin = new Map((index?.plugins ?? []).map((p) => [p.name, p]));
   const rows = (installed.bundles ?? []).map((bundle) => {

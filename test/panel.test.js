@@ -1,17 +1,40 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+/**
+ * The panel reads a locally generated matrix snapshot, addressed by
+ * DSH_PLUGIN_LINT_INDEX, so the tests build their own instead of depending on a
+ * data file this repository does not ship.
+ */
+const FIXTURE_INDEX = {
+  schemaVersion: 1,
+  generatedAt: '2026-01-01T00:00:00.000Z',
+  dshVersions: ['0.2.0-rc.2', '0.2.1-alpha.2'],
+  plugins: [
+    {
+      name: 'covered-plugin',
+      version: '1.0.0',
+      cells: [
+        { dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', toolsAdded: ['a_tool'], reproduce: 'probe covered-plugin' },
+        { dsh: '0.2.1-alpha.2', status: 'rejected-by-host', trust: 'verified', toolsAdded: [], reproduce: 'probe covered-plugin' },
+      ],
+    },
+  ],
+};
+
+const indexDir = mkdtempSync(join(tmpdir(), 'dsh-panel-index-'));
+const indexPath = join(indexDir, 'matrix-index.json');
+writeFileSync(indexPath, JSON.stringify(FIXTURE_INDEX));
+process.env.DSH_PLUGIN_LINT_INDEX = indexPath;
 const panel = await import(fileURLToPath(new URL('../panel/index.js', import.meta.url)));
-const snapshot = JSON.parse(readFileSync(fileURLToPath(new URL('../panel/data/matrix-index.json', import.meta.url)), 'utf8'));
 
 /** A profile directory shaped like the real one: selected bundles plus what is installed. */
 function profile(installed) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-panel-'));
-  // The manifest lists bundle NAMES; the version lives in what is installed.
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
     name: 'dsh-profile-test',
     dsh: { profile: { bundles: installed.map((entry) => entry.name) } },
@@ -33,19 +56,18 @@ const withProfile = (dir, fn) => {
 };
 
 test('the panel reports the installed version of every selected bundle', () => {
-  const covered = snapshot.plugins[0].name;
-  const dir = profile([{ name: covered, version: '9.9.9' }, { name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
+  const dir = profile([{ name: 'covered-plugin', version: '9.9.9' }, { name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
   withProfile(dir, () => {
     const data = panel.payload();
     assert.equal(data.ok, true);
     assert.equal(data.rows.length, 2);
-    const row = data.rows.find((r) => r.name === covered);
+    const row = data.rows.find((r) => r.name === 'covered-plugin');
     assert.equal(row.version, '9.9.9', 'the installed version wins over the bundle spec');
     assert.equal(row.known, true, 'a plugin in the snapshot is marked as covered');
-    assert.ok(row.cells.length >= 1);
-    assert.ok(row.cells.every((c) => typeof c.status === 'string'));
-    const firstParty = data.rows.find((r) => r.name === '@deepseek-ai/dsh-base');
-    assert.equal(firstParty.firstParty, true);
+    assert.equal(row.cells.length, 2);
+    assert.deepEqual(row.cells.map((c) => c.status), ['active', 'rejected-by-host']);
+    assert.deepEqual(data.matrix.dshVersions, FIXTURE_INDEX.dshVersions);
+    assert.equal(data.rows.find((r) => r.name === '@deepseek-ai/dsh-base').firstParty, true);
   });
 });
 
@@ -71,9 +93,29 @@ test('the panel explains itself when the profile cannot be read', () => {
   }
 });
 
-test('the panel exposes the running DSH version when it can resolve it', () => {
-  const data = panel.payload();
-  assert.ok(data.dsh.version === undefined || /^\d+\.\d+\.\d+/.test(data.dsh.version));
+test('the panel survives a bundle list holding something that is not a name', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-panel-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ dsh: { profile: { bundles: [{ oops: true }, 'covered-plugin'] } } }));
+  mkdirSync(join(dir, 'node_modules', 'covered-plugin'), { recursive: true });
+  writeFileSync(join(dir, 'node_modules', 'covered-plugin', 'package.json'), JSON.stringify({ name: 'covered-plugin', version: '2.0.0' }));
+  withProfile(dir, () => {
+    const rows = panel.payload().rows;
+    assert.equal(rows.length, 1, 'the malformed entry is skipped rather than thrown');
+    assert.equal(rows[0].name, 'covered-plugin');
+  });
+});
+
+test('a missing snapshot leaves every plugin uncovered instead of failing', () => {
+  const saved = process.env.DSH_PLUGIN_LINT_INDEX;
+  process.env.DSH_PLUGIN_LINT_INDEX = join(indexDir, 'does-not-exist.json');
+  try {
+    const data = panel.payload();
+    assert.equal(data.ok, true);
+    assert.deepEqual(data.matrix.dshVersions, []);
+    assert.equal(data.matrix.plugins, 0);
+  } finally {
+    process.env.DSH_PLUGIN_LINT_INDEX = saved;
+  }
 });
 
 test('the route path is stable', () => {
