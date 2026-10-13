@@ -140,45 +140,53 @@ export const RULES = [
   {
     id: 'W1',
     level: 'warn',
-    title: 'loads a Harness Client package as a module',
+    title: 'couples the plugin to a Harness Client package',
     doc: DOC.ui,
     check(ctx, options, push) {
       // First-party packages ship in the same release as the browser module table,
       // so the coupling this rule warns about does not apply to them. Measured on
       // 2026-10-13: every official client bundle loads ui-primitives / store / slots.
       if (/^@deepseek-ai\//.test(ctx.manifest.name || '')) return;
+
+      // One finding per surface, not per package: a plugin that lists six client
+      // packages is one decision to review, not six defects.
+      const loaded = new Map();
       if (ctx.entries.client !== undefined && ctx.exists(ctx.entries.client)) {
         const file = ctx.byPath(ctx.entries.client);
         if (file) {
-          const seen = new Set();
-          let m;
           const re = /(?:from\s*|require\s*\(\s*|[A-Za-z_$][\w$]*\s*\(\s*)["'](@deepseek-ai\/dsh-client[a-z0-9-]*)["']/g;
+          let m;
           while ((m = re.exec(file.masked)) !== null) {
-            if (seen.has(m[1])) continue;
-            seen.add(m[1]);
-            push({
-              file: file.path,
-              line: file.strings.find((s) => s.start >= m.index && s.start - m.index < 80)?.line,
-              message: 'loads "' + m[1] + '" from the browser module table.',
-              evidence: m[0].trim(),
-              hint: 'The reference advises copying the primitive instead: these packages change without notice and a throwing component blanks the slot. Official first-party bundles do the same, so treat this as a coupling risk to watch at upgrade time, not as a defect.',
-            });
+            if (loaded.has(m[1])) continue;
+            loaded.set(m[1], { line: file.strings.find((s) => s.start >= m.index && s.start - m.index < 80)?.line, evidence: m[0].trim() });
           }
         }
       }
+      if (loaded.size > 0) {
+        const first = loaded.values().next().value;
+        push({
+          file: ctx.entries.client,
+          line: first.line,
+          message: 'loads ' + loaded.size + ' Harness Client package' + (loaded.size === 1 ? '' : 's') + ' from the browser module table: ' + [...loaded.keys()].join(', ') + '.',
+          evidence: first.evidence,
+          hint: 'The reference advises copying the primitive instead: these packages change without notice and a throwing component blanks the slot. Official first-party bundles do the same, so treat this as a coupling risk to watch at upgrade time, not as a defect.',
+        });
+      }
+
+      const coupled = [];
       for (const depField of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
-        const deps = ctx.manifest[depField];
-        if (!deps) continue;
-        for (const name of Object.keys(deps)) {
-          if (!/^@deepseek-ai\/dsh-client/.test(name)) continue;
-          push({
-            file: 'package.json',
-            line: manifestLine(ctx.manifestText, '"' + name + '"'),
-            message: depField + ' couples the plugin to "' + name + '".',
-            evidence: depField + ': ' + name,
-            hint: 'dsh.client.inject entries only order activation and stay allowed; a dependency means the code loads it.',
-          });
+        for (const name of Object.keys(ctx.manifest[depField] || {})) {
+          if (/^@deepseek-ai\/dsh-client/.test(name)) coupled.push(depField + ':' + name);
         }
+      }
+      if (coupled.length > 0) {
+        push({
+          file: 'package.json',
+          line: 1,
+          message: 'declares ' + coupled.length + ' Harness Client package dependenc' + (coupled.length === 1 ? 'y' : 'ies') + ': ' + coupled.join(', ') + '.',
+          evidence: coupled.join(' '),
+          hint: 'dsh.client.inject entries only order activation and stay allowed; a dependency means the code loads it.',
+        });
       }
     },
   },

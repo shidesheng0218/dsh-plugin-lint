@@ -56,6 +56,15 @@ Measured on 2026-10-13 against the top 40 published community plugins and an ins
 
 The ecosystem has 4,508 catalogued plugins and adds roughly a thousand a month. Upgrade breakage is a product category of its own (three tools sell the *recovery*), but nothing was checking the code against the documented practices.
 
+### Measured with this tool
+
+| Run | Result |
+| --- | --- |
+| 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 239 info |
+| 12 published community plugins | **0 error · 13 warn · 25 info** |
+
+The error rules did not fire on any published plugin. They are insurance against rare, fatal mistakes — the daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07-m1-results.md](docs/07-m1-results.md).
+
 ## The rules
 
 Levels are assigned by **how reliably a rule can decide**, not by how bad the pattern sounds. A rule that cannot decide reliably does not get to be an error.
