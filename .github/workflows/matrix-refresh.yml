@@ -4,6 +4,25 @@ on:
   schedule:
     - cron: '0 3 * * 1'
   workflow_dispatch:
+    inputs:
+      plugins:
+        description: 'Optional comma-separated packages or paths; overrides the target list.'
+        required: false
+        default: ''
+      out:
+        description: 'Where to write cells.'
+        required: false
+        default: 'matrix/cells'
+      tools:
+        description: 'Capture the tool inventory and prompt cost too.'
+        required: false
+        type: boolean
+        default: true
+      commit:
+        description: 'Commit the refreshed cells and open a pull request.'
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -22,13 +41,36 @@ jobs:
         with:
           version: '10'
 
-      - name: Probe the published top 50 against the pinned DSH versions
-        run: node scripts/matrix/run.mjs --targets matrix/targets-top50.json --concurrency 4
+      - name: Probe
+        env:
+          PLUGINS: ${{ inputs.plugins }}
+          OUT: ${{ inputs.out || 'matrix/cells' }}
+          TOOLS: ${{ inputs.tools == false && '--no-tools' || '--tools' }}
+        run: |
+          set -euo pipefail
+          if [ -n "$PLUGINS" ]; then
+            node scripts/matrix/run.mjs --plugins "$PLUGINS" --out "$OUT" --concurrency 4 "$TOOLS"
+          else
+            node scripts/matrix/run.mjs --targets matrix/targets-top50.json --out "$OUT" --concurrency 4 "$TOOLS"
+          fi
 
       - name: Regenerate the site and the aggregate index
+        if: ${{ inputs.out == '' || inputs.out == 'matrix/cells' }}
         run: node scripts/matrix/site.mjs
 
+      - name: Upload the cells
+        uses: actions/upload-artifact@v4
+        with:
+          name: matrix-cells
+          path: ${{ inputs.out || 'matrix/cells' }}
+
+      - name: Report what changed
+        run: |
+          git status --porcelain
+          git diff --stat | tail -5
+
       - name: Open a pull request with the changed cells
+        if: ${{ inputs.commit != false }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -44,4 +86,4 @@ jobs:
           git add -A
           git commit -m "chore(matrix): refresh cells"
           git push origin "HEAD:$branch"
-          gh pr create --title "chore(matrix): refresh cells" --body "Automated weekly refresh. Review the verdict changes before merging: a plugin moving from active to rejected-by-host is the signal this project exists to produce." --base "${{ github.event.repository.default_branch }}" --head "$branch"
+          gh pr create --title "chore(matrix): refresh cells" --body "Automated refresh. Review the verdict changes before merging: a plugin moving from active to rejected-by-host is the signal this project exists to produce." --base "${{ github.event.repository.default_branch }}" --head "$branch"
