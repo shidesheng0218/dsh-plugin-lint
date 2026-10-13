@@ -59,14 +59,36 @@ jobs:
 
 三个 workflow 都用 `gh` 开 PR，不依赖第三方 action。
 
-## 5. 诚实的限制
+## 5. 已实测（2026-10-13，GitHub Actions / ubuntu-latest）
 
-- **这些 workflow 还没在 GitHub 上真跑过**：本仓库目前只有本地 git，没有远端。它们的 YAML 未经执行，逻辑则跑在已被本地测试的 `scripts/` 上（action 只是薄包装，因此未执行的风险面很小）。
+三个 workflow 全部真跑过：
+
+| workflow | 结果 |
+| --- | --- |
+| `ci.yml` | ✅ 19 秒；**第一次执行就抓到一个真实缺陷**（把父目录传给 linter），已修 |
+| `matrix-refresh.yml` | ✅ 2 分 33 秒（限定 2 插件 / 8 格）；数据与 macOS 一致 |
+| `verify-sample.yml` | ✅ 10 秒；无自报 cell 时正确空转，不开空 PR |
+
+### 跨平台可复现性（Linux vs macOS，同一格）
+
+```text
+dsh-mnemon x 0.2.0-rc.2 [headless]
+  status       active           vs  active
+  tools        17               vs  17      （清单逐项相同）
+  packages     5                vs  5
+  prompt 字符  7157             vs  7153    ← 差 4 字符
+  耗时         17.8s            vs  4.4s    ← runner 更慢，符合预期
+```
+
+**那 4 个字符的差异要写进结论的语气里**：系统提示词含运行环境的路径（`/home/runner/work/…` vs `/private/tmp/…`），所以"提示词字符数"是**近似量**，不应被当作精确可复现值。其余字段（状态、工具清单、包清单）跨平台完全一致。
+
+## 6. 诚实的限制
+
 - **web 组合需要 pnpm 与网络**：CI 里用 `pnpm/action-setup`，装插件时访问 npm registry。
 - **客户端半边仍不覆盖**：见 [10](10-m4-verification.md) §5，action 的摘要里也写了这句。
 - **大插件慢**：单格 2–180 秒（`@roarpeng/graphflow` 依赖 `onnxruntime-node`，实测 183 秒）。
 
-## 6. 为什么值得作者跑
+## 7. 为什么值得作者跑
 
 | 作者得到 | 说明 |
 | --- | --- |
