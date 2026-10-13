@@ -205,6 +205,75 @@ export function noteOf(text) {
 const payloadOf = (seen) => seen.filter((b) => Array.isArray(b.tools)).pop();
 
 /**
+ * Probe several packages together in ONE profile.
+ *
+ * This is what composition questions need: installing plugins one at a time says
+ * nothing about what happens when they meet. The comparison that matters is the
+ * merged tool list against the union of what each plugin registered alone — when
+ * the merged list is smaller, something was silently shadowed.
+ */
+export async function probeCombo({ targets, dsh, stub, tools = true, keep = false }) {
+  const resolved = targets.map((t) => (existsSync(t) ? resolve(t) : t));
+  const home = mkdtempSync(join(tmpdir(), 'dsh-combo-'));
+  const cell = { status: 'unknown', install: 'ok', entries: [], durationMs: 0, note: '', tools: undefined, installed: [] };
+  const started = Date.now();
+  const patchPath = join(home, 'probe-patch.yml');
+  const bootArgs = ['--profile', 'headless', ...(tools ? ['--patch', patchPath] : []), 'probe'];
+  const bootEnv = tools ? { PROBE_API_KEY: 'probe' } : {};
+  if (tools) {
+    writeFileSync(patchPath, [
+      '- id: llm-deepseek',
+      '  name: "@deepseek-ai/dsh-llm-deepseek-api-key"',
+      '  config:',
+      '    baseURL: http://127.0.0.1:' + stub.port,
+      '    apiKeyEnv: PROBE_API_KEY',
+      '',
+    ].join('\n'));
+  }
+  try {
+    await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
+    if (!readdirSync(home).includes('profiles')) {
+      cell.install = 'template-failed';
+      return cell;
+    }
+    const before = tools ? payloadOf(stub.seen.splice(0)) : undefined;
+
+    const profilePkgPath = join(home, 'profiles', 'headless', 'package.json');
+    for (const target of resolved) {
+      const beforePkg = existsSync(profilePkgPath) ? readFileSync(profilePkgPath, 'utf8') : '';
+      const installed = await capture(() => runDsh(dsh, home, ['plugin', '--profile', 'headless', 'add', target], bootEnv));
+      const afterPkg = existsSync(profilePkgPath) ? readFileSync(profilePkgPath, 'utf8') : '';
+      if (installed.failed && afterPkg === beforePkg) {
+        const rejection = rejectionOf(installed.out);
+        cell.installed.push({ target, ok: false, rejection, note: noteOf(installed.out) });
+        continue;
+      }
+      cell.installed.push({ target, ok: true });
+    }
+
+    const booted = await capture(() => runDsh(dsh, home, bootArgs, bootEnv));
+    cell.entries = parseInactive(booted.out);
+    cell.awaitedServices = awaitedServices(cell.entries);
+    const after = tools ? payloadOf(stub.seen.splice(0)) : undefined;
+    cell.status = classify(booted.out, cell.entries, tools ? Boolean(after) : undefined);
+    cell.note = noteOf(booted.out);
+
+    if (tools && before && after) {
+      const names = (p) => p.tools.map((t) => t.name);
+      const b = new Set(names(before));
+      const a = new Set(names(after));
+      cell.tools = { baseline: b.size, total: a.size, added: [...a].filter((x) => !b.has(x)), removed: [...b].filter((x) => !a.has(x)) };
+      cell.systemPrompt = { baselineChars: JSON.stringify(before.system ?? '').length, chars: JSON.stringify(after.system ?? '').length };
+    }
+    return cell;
+  } finally {
+    cell.durationMs = Date.now() - started;
+    if (!keep) rmSync(home, { recursive: true, force: true });
+  }
+}
+
+
+/**
  * Probe one package.
  * @returns a cell: the verdict, what it registered, and how to reproduce it.
  */

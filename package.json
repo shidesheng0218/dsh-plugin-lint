@@ -1,7 +1,7 @@
 {
-  "name": "dsh-plugin-lint",
-  "version": "0.0.1",
-  "description": "Conformance and compatibility checks for DeepSeek Harness (DSH) plugins — factual, evidence-backed, zero-config.",
+  "name": "@shidesheng0218/dsh-plugin-lint",
+  "version": "0.1.0",
+  "description": "Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.",
   "keywords": [
     "dsh",
     "dsh-plugin",
@@ -21,11 +21,14 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "dsh-plugin-lint": "./bin/dsh-plugin-lint.mjs"
+    "dsh-plugin-lint": "./bin/dsh-plugin-lint.mjs",
+    "dsh-plugin-probe": "./scripts/probe-boot.mjs"
   },
   "files": [
     "bin/",
     "src/",
+    "scripts/probe-boot.mjs",
+    "scripts/lib/",
     "README.md",
     "LICENSE",
     "NOTICE"
@@ -33,10 +36,21 @@
   "scripts": {
     "test": "node --test test/*.test.js",
     "e2e:official": "node scripts/e2e-official.mjs",
-    "harvest:events": "node scripts/harvest-event-types.mjs"
+    "harvest:events": "node scripts/harvest-event-types.mjs",
+    "fetch:official": "node scripts/fetch-official-from-npm.mjs",
+    "matrix": "node scripts/matrix/run.mjs",
+    "site": "node scripts/matrix/site.mjs",
+    "panel": "node scripts/matrix/bundle-panel-data.mjs",
+    "notify": "node scripts/build-notification-pack.mjs"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/shidesheng0218/dsh-plugin-lint.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shidesheng0218/dsh-plugin-lint/issues"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

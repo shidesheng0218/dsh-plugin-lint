@@ -25,3 +25,11 @@ jobs:
 
       - name: Lint our own plugin and fixtures
         run: node bin/dsh-plugin-lint.mjs panel test/probe-plugins --no-color --exit-code
+
+      - name: Package smoke test
+        run: |
+          npm pack --silent
+          mkdir -p /tmp/pack-smoke && cd /tmp/pack-smoke
+          npm init -y >/dev/null 2>&1
+          npm install --silent "$GITHUB_WORKSPACE"/*.tgz
+          ./node_modules/.bin/dsh-plugin-lint "$GITHUB_WORKSPACE/panel" --quiet --no-color
