@@ -57,6 +57,16 @@ const installLog = await runToExit(['plugin', '--profile', 'web', 'add', PANEL])
 const installLine = installLog.split('\n').filter((l) => /added|dependencies|rejected|Error/.test(l)).slice(0, 2).join(' | ');
 console.log('    ' + (installLine || '(no install output)'));
 
+// A profile holding only the panel itself makes a dull screenshot: every cell
+// is "not covered". --with <pkg> installs one matrix-covered plugin too, so the
+// pills render. The extra install goes into the same throwaway home.
+const extraPlugin = argOf('--with', '');
+if (extraPlugin) {
+  const extraLog = await runToExit(['plugin', '--profile', 'web', 'add', extraPlugin]);
+  const extraLine = extraLog.split('\n').filter((l) => /added|dependencies|rejected|Error/.test(l)).slice(0, 2).join(' | ');
+  console.log('    also installed ' + extraPlugin + ': ' + (extraLine || '(no install output)'));
+}
+
 console.log('3/5 starting the web server');
 const server = spawn(process.execPath, [CLI, '--profile', 'web', '--port', '0', '--no-open'], { env });
 let log = '';

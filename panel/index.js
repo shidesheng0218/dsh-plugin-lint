@@ -51,9 +51,30 @@ function runningDshVersion() {
   return undefined;
 }
 
+/**
+ * The profile directory, with a fallback for compositions that do not expose it.
+ *
+ * DSH_PROFILE_DIR is contributed by dsh-shell-env, which is part of the shell
+ * surface: a web composition does not mount it, so the panel saw "not set"
+ * although the profile was right there. DSH_HOME is set for every profile, and
+ * the launcher was invoked with `--profile <name>`, so the directory is
+ * derivable: $DSH_HOME/profiles/<name>.
+ */
+function profileDir() {
+  if (process.env.DSH_PROFILE_DIR) return process.env.DSH_PROFILE_DIR;
+  const home = process.env.DSH_HOME;
+  if (!home) return undefined;
+  const argv = process.argv || [];
+  const i = argv.indexOf('--profile');
+  const name = i >= 0 ? argv[i + 1] : undefined;
+  if (!name || name.startsWith('-')) return undefined;
+  const dir = join(home, 'profiles', name);
+  return existsSync(join(dir, 'package.json')) ? dir : undefined;
+}
+
 /** Bundles this profile selected, with the version actually installed. */
 function installedBundles() {
-  const dir = process.env.DSH_PROFILE_DIR;
+  const dir = profileDir();
   if (!dir) return { error: 'DSH_PROFILE_DIR is not set, so the installed plugins cannot be listed' };
   const manifest = readJson(join(dir, 'package.json'));
   if (!manifest) return { error: 'no package.json in ' + dir };
