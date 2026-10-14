@@ -50,7 +50,7 @@ export function toSarif(reports) {
           id: f.rule,
           name: f.rule,
           shortDescription: { text: f.title },
-          helpUri: 'https://github.com/deepseek-ai/deepseek-harness',
+          helpUri: 'https://github.com/shidesheng0218/dsh-plugin-lint',
           properties: { doc: f.doc, level: f.level },
         });
       }
@@ -72,7 +72,7 @@ export function toSarif(reports) {
     version: '2.1.0',
     $schema: 'https://json.schemastore.org/sarif-2.1.0.json',
     runs: [{
-      tool: { driver: { name: 'dsh-plugin-lint', informationUri: 'https://github.com/<owner>/dsh-plugin-lint', rules } },
+      tool: { driver: { name: 'dsh-plugin-lint', informationUri: 'https://github.com/shidesheng0218/dsh-plugin-lint', rules } },
       results,
     }],
   };
