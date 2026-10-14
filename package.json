@@ -21,8 +21,8 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "dsh-plugin-lint": "./bin/dsh-plugin-lint.mjs",
-    "dsh-plugin-probe": "./scripts/probe-boot.mjs"
+    "dsh-plugin-lint": "bin/dsh-plugin-lint.mjs",
+    "dsh-plugin-probe": "scripts/probe-boot.mjs"
   },
   "files": [
     "bin/",

@@ -68,3 +68,21 @@ npx @shidesheng0218/dsh-plugin-lint . --no-color
 | 测试 | ✅ 28/28 |
 | 安装冒烟 | ✅ 见上表 |
 | **npm 登录** | ❌ **未登录，需要你操作** |
+
+## 6. 实际发布（2026-10-14，已上线）
+
+**@shidesheng0218/dsh-plugin-lint@0.1.0 已发布**，registry 验证通过：`npx -y @shidesheng0218/dsh-plugin-lint <目录>` 从 registry 拉取并正常运行，两个 bin 都在。
+
+过程中三个值得记录的事实：
+
+| 现象 | 真相 |
+| --- | --- |
+| 发布需要 OTP | 账号开了 2FA；npm 正在收紧绕过 2FA 的 token，这是平台策略 |
+| 搜索 API 一度显示 `0.0.0-stage` | npm 的 staged publish 中转态，确认后变成 0.1.0，dist-tag latest 正常 |
+| 日志警告 bin 条目 "invalid and removed" | **文案有误导**：因为值写了 `./bin/...` 前缀，`secureAndUnixifyPath` 归一化后**保留**了条目。已发布的包里 bin 是好的；本地 package.json 已去掉 `./` 前缀与线上一致 |
+
+发布命令（需要 OTP 时）：
+
+```bash
+npm publish --otp=<验证器当前 6 位码>
+```
