@@ -8,6 +8,6 @@ This product includes data derived from the DeepSeek Harness distribution:
   DeepSeek Harness is licensed under the MIT License.
   https://github.com/deepseek-ai/deepseek-harness
 
-The rule set in src/rules/ encodes practices documented in the DeepSeek Harness
+The rule set in src/rules.js encodes practices documented in the DeepSeek Harness
 plugin-development reference (MIT). Each rule cites its source document in the
 `doc` field so readers can verify the claim against the upstream text.
