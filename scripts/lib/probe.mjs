@@ -159,13 +159,21 @@ export function parseInactive(text) {
  * Map raw probe output to the verdict vocabulary. install-failed is never a
  * plugin verdict.
  *
+ * An inactive entry is either waiting or failing, and the difference decides
+ * the verdict: "waiting for service: x" names a gap in this composition, so it
+ * is not a plugin failure — but any entry that is NOT waiting failed for a real
+ * reason, and one real failure outweighs any number of waiting entries. Asking
+ * only about /Error/ used to invert that: a timeout or a rejected config next
+ * to a waiting entry reported the harmless "awaiting-service".
+ *
  * Two different success sentinels, because the two modes end differently:
  *   mount-only  the run stops at MISSING_CREDENTIAL (no credentials in the throwaway home)
  *   with --tools the stub answers, so the run COMPLETES: a captured tool-bearing
  *               request is the proof that the composition mounted
  */
 export function classify(bootText, entries, toolPayloadCaptured) {
-  if (entries.some((e) => /Error/.test(e.reason))) return 'inactive-error';
+  const failing = entries.filter((e) => !/waiting for service/.test(e.reason || ''));
+  if (failing.length > 0) return 'inactive-error';
   // "awaiting-service" is NOT a failure. Measured on 2026-10-13: every pending
   // plugin in the smoke sample was waiting for a service the headless profile does
   // not provide (webServer, connection, agentPresets), so this verdict says
