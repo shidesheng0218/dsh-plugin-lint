@@ -127,6 +127,16 @@ function payload() {
       cells: known ? withCurrentTrust(known.cells) : [],
     };
   });
+  // Aggregate counts across the whole matrix — never a package name — so the
+  // client can show the ecosystem picture without the snapshot naming anyone.
+  const ecosystem = { versions: {} };
+  for (const plugin of index?.plugins ?? []) {
+    for (const cell of plugin.cells ?? []) {
+      if (!ecosystem.versions[cell.dsh]) ecosystem.versions[cell.dsh] = {};
+      const tally = ecosystem.versions[cell.dsh];
+      tally[cell.status] = (tally[cell.status] || 0) + 1;
+    }
+  }
   return {
     ok: true,
     dsh: { version: runningDshVersion() },
@@ -135,6 +145,7 @@ function payload() {
       generatedAt: index?.generatedAt,
       dshVersions: index?.dshVersions ?? [],
       plugins: index?.plugins?.length ?? 0,
+      ecosystem,
     },
     rows,
   };

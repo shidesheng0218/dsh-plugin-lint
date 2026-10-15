@@ -161,6 +161,12 @@ window.__ModuleLoader__.load({
         bodyRows.push(rowOf(row));
       }
 
+      // The ecosystem block uses only aggregate counts the host computed from the
+      // full matrix — never a package name — so it is safe to show even when the
+      // snapshot names packages elsewhere.
+      const ecosystem = (data.matrix && data.matrix.ecosystem) || null;
+      const ecoVersions = ecosystem ? Object.keys(ecosystem.versions || {}) : [];
+
       return React.createElement('div', { style: { color: T.text, maxWidth: '880px' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } },
           React.createElement('div', { style: { fontSize: '16px', fontWeight: 600, letterSpacing: '-0.01em' } }, LABEL),
@@ -175,6 +181,28 @@ window.__ModuleLoader__.load({
         React.createElement('table', { style: { borderCollapse: 'collapse', width: '100%' } },
           React.createElement('thead', null, header),
           React.createElement('tbody', null, bodyRows)),
+        ecosystem && ecoVersions.length > 0 ? React.createElement('div', { style: { marginTop: '28px' } },
+          React.createElement('div', { style: { color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' } },
+            'The matrix so far'),
+          React.createElement('div', { style: { color: T.secondary, fontSize: '13px', marginBottom: '12px' } },
+            (data.matrix.plugins || 0) + ' plugins probed across ' + ecoVersions.length + ' DSH versions'),
+          ecoVersions.map((v) => {
+            const tally = ecosystem.versions[v] || {};
+            const total = Object.values(tally).reduce((a, b) => a + b, 0);
+            const active = tally['active'] || 0;
+            const rejected = tally['rejected-by-host'] || 0;
+            const waiting = tally['awaiting-service'] || 0;
+            const pct = total > 0 ? Math.round((active / total) * 100) : 0;
+            return React.createElement('div', { key: v, style: { marginBottom: '10px' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' } },
+                React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, v),
+                React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } },
+                  active + ' active · ' + rejected + ' refused · ' + waiting + ' awaiting · ' + pct + '% mounted')),
+              React.createElement('div', { style: { height: '3px', borderRadius: '999px', background: T.surface, overflow: 'hidden', display: 'flex' } },
+                React.createElement('div', { style: { width: (total > 0 ? (active / total) * 100 : 0) + '%', background: STATUS.active.color } }),
+                React.createElement('div', { style: { width: (total > 0 ? (waiting / total) * 100 : 0) + '%', background: STATUS['awaiting-service'].color } }),
+                React.createElement('div', { style: { width: (total > 0 ? (rejected / total) * 100 : 0) + '%', background: STATUS['rejected-by-host'].color } })));
+          })) : null,
         React.createElement('div', {
           style: { color: T.tertiary, fontSize: '12px', marginTop: '16px', paddingTop: '12px', borderTop: T.hairline, lineHeight: 1.6 },
         },
