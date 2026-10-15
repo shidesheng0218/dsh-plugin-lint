@@ -22,6 +22,7 @@ window.__ModuleLoader__.load({
     const React = require('react');
 
     const ROUTE = '/api/dsh-plugin-lint/panel';
+    const NS = 'dsh-plugin-lint-panel';
     const LABEL = 'Plugin compatibility';
 
     const T = {
@@ -31,6 +32,69 @@ window.__ModuleLoader__.load({
       hairline: '1px solid var(--dsw-alias-border-l1, rgba(128,128,128,.18))',
       surface: 'var(--dsw-alias-bg-layer-1, rgba(128,128,128,.06))',
       mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    };
+
+    // Visible UI text goes through the Client locale service: the host's
+    // language setting decides which dictionary each string comes from.
+    const DICT = {
+      en: {
+        title: 'Plugin compatibility',
+        loading: 'Reading the matrix…',
+        error: 'Could not read the panel data: ',
+        panelError: 'Panel error: ',
+        matrixOf: 'Matrix of {plugins} plugins, generated {date}',
+        installed: '{total} installed, {known} covered, {atRisk} with a failure on some version',
+        noPerPlugin: ' · run the matrix to see your own plugins here',
+        upgradeTitle: 'DSH {version} is available',
+        upgradeBody: '{count} of your installed plugins would get a worse verdict on {version}. You are running {running}.',
+        theMatrixSoFar: 'The matrix so far',
+        probedAcross: '{plugins} plugins probed across {versions} DSH versions',
+        active: 'active',
+        refused: 'refused',
+        awaiting: 'awaiting',
+        mounted: 'mounted',
+        footer: 'Each cell is a probe result from a throwaway profile, host half only: a plugin whose browser half is loaded in the web app is not exercised by the probe. "untested here" means the plugin was waiting for a service that composition does not provide — it is not a failure. Cells state detected facts about named packages; they are not a verdict.',
+        capabilities: 'Capabilities',
+        capNetwork: 'network',
+        capShell: 'shell',
+        capFsRead: 'fs-read',
+        capFsWrite: 'fs-write',
+        capEnv: 'env',
+        capUiInjection: 'ui-injection',
+        capLlm: 'llm',
+        capSessionWrite: 'session-write',
+        capConnection: 'connection',
+        capTelemetry: 'telemetry',
+      },
+      zh: {
+        title: '插件兼容性',
+        loading: '正在读取矩阵…',
+        error: '无法读取面板数据：',
+        panelError: '面板错误：',
+        matrixOf: '矩阵覆盖 {plugins} 个插件，生成于 {date}',
+        installed: '已安装 {total} 个，覆盖 {known} 个，{atRisk} 个在某版本上失败',
+        noPerPlugin: ' · 运行矩阵以查看你自己的插件',
+        upgradeTitle: 'DSH {version} 已发布',
+        upgradeBody: '你安装的 {count} 个插件在 {version} 上会变得更差。你正在运行 {running}。',
+        theMatrixSoFar: '矩阵全景',
+        probedAcross: '已探测 {plugins} 个插件 × {versions} 个 DSH 版本',
+        active: '正常',
+        refused: '被拒绝',
+        awaiting: '等待服务',
+        mounted: '已挂载',
+        footer: '每格是一次性 profile 的探针结果，仅 host 半边：浏览器半边由 web 应用加载，不在探针范围内。"等待服务"表示插件在等待该组合未提供的服务——不是失败。格子陈述的是对具名包的检测事实，不是裁决。',
+        capabilities: '能力',
+        capNetwork: '网络',
+        capShell: '命令执行',
+        capFsRead: '读文件',
+        capFsWrite: '写文件',
+        capEnv: '环境变量',
+        capUiInjection: 'UI 注入',
+        capLlm: '模型调用',
+        capSessionWrite: '会话写入',
+        capConnection: '连接服务',
+        capTelemetry: '遥测',
+      },
     };
 
     const STATUS = {
@@ -91,7 +155,7 @@ window.__ModuleLoader__.load({
       return { total: rows.length, known: known.length, atRisk: atRisk.length };
     }
 
-    function Panel() {
+    function Panel({ t }) {
       const [state, setState] = React.useState({ phase: 'loading' });
       React.useEffect(() => {
         let alive = true;
@@ -103,11 +167,11 @@ window.__ModuleLoader__.load({
       }, []);
 
       const quiet = { color: T.secondary, fontSize: '13px', padding: '16px 0' };
-      if (state.phase === 'loading') return React.createElement('div', { style: quiet }, 'Reading the matrix…');
-      if (state.phase === 'error') return React.createElement('div', { style: quiet }, 'Could not read the panel data: ' + state.error);
+      if (state.phase === 'loading') return React.createElement('div', { style: quiet }, t('loading'));
+      if (state.phase === 'error') return React.createElement('div', { style: quiet }, t('error') + state.error);
 
       const data = state.data || {};
-      if (data.ok === false) return React.createElement('div', { style: quiet }, 'Panel error: ' + data.error);
+      if (data.ok === false) return React.createElement('div', { style: quiet }, t('panelError') + data.error);
       const versions = (data.matrix && data.matrix.dshVersions) || [];
       const s = summary(data);
 
@@ -121,15 +185,29 @@ window.__ModuleLoader__.load({
 
       const header = React.createElement('tr', null,
         React.createElement('th', { style: { ...th, width: '100%' } }, 'Plugin'),
+        React.createElement('th', { style: th }, t('capabilities')),
         versions.map((v) => React.createElement('th', { key: v, style: { ...th, fontFamily: T.mono, fontWeight: 500 } }, v)));
 
       const subhead = firstParty.length > 0 && community.length > 0
         ? React.createElement('tr', { key: '__firstparty' },
             React.createElement('td', {
-              colSpan: versions.length + 1,
+              colSpan: versions.length + 2,
               style: { padding: '14px 2px 6px', color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' },
             }, 'Bundled with DSH'))
         : null;
+
+      const CAPABILITY_LABEL = {
+        network: t('capNetwork'),
+        shell: t('capShell'),
+        'fs-read': t('capFsRead'),
+        'fs-write': t('capFsWrite'),
+        env: t('capEnv'),
+        'ui-injection': t('capUiInjection'),
+        llm: t('capLlm'),
+        'session-write': t('capSessionWrite'),
+        connection: t('capConnection'),
+        telemetry: t('capTelemetry'),
+      };
 
       const rowOf = (row) => React.createElement('tr', { key: row.name },
         React.createElement('td', { style: td },
@@ -137,6 +215,19 @@ window.__ModuleLoader__.load({
           React.createElement('div', { style: { color: T.tertiary, fontSize: '12px', marginTop: '1px' } },
             (row.version || (row.providedBy === 'dsh-installation' ? 'bundled with DSH' : 'not installed'))
             + (row.known || row.firstParty ? '' : ' · not in the matrix'))),
+        // The capability column: what the audit observed, as compact tags.
+        React.createElement('td', { style: td },
+          row.audit && row.audit.observed && row.audit.observed.length > 0
+            ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px' } },
+                row.audit.observed.map((o) => React.createElement('span', {
+                  key: o.capability,
+                  title: o.sites + ' site' + (o.sites === 1 ? '' : 's') + ', first: ' + o.first.file,
+                  style: {
+                    display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
+                    background: T.surface, color: T.secondary, fontSize: '11px', fontFamily: T.mono,
+                  },
+                }, CAPABILITY_LABEL[o.capability] || o.capability)))
+            : React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } }, '—')),
         versions.map((v) => {
           const cells = cellsFor(row, v);
           if (cells.length === 0) return React.createElement('td', { key: v, style: { ...td, textAlign: 'left' } }, none());
@@ -169,15 +260,13 @@ window.__ModuleLoader__.load({
 
       return React.createElement('div', { style: { color: T.text, maxWidth: '880px' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } },
-          React.createElement('div', { style: { fontSize: '16px', fontWeight: 600, letterSpacing: '-0.01em' } }, LABEL),
+          React.createElement('div', { style: { fontSize: '16px', fontWeight: 600, letterSpacing: '-0.01em' } }, t('title')),
           React.createElement('div', { style: { color: T.tertiary, fontSize: '12px', fontFamily: T.mono } },
             'DSH ' + ((data.dsh && data.dsh.version) || 'unknown'))),
         React.createElement('div', { style: { color: T.secondary, fontSize: '13px', margin: '4px 0 16px' } },
-          'Matrix of ' + ((data.matrix && data.matrix.plugins) || 0) + ' plugins, generated ' + formatDate(data.matrix && data.matrix.generatedAt)
-          + ' · ' + s.total + ' installed, ' + s.known + ' covered, ' + s.atRisk + ' with a failure on some version'
-          + (data.matrix && data.matrix.hasPerPluginData === false
-            ? ' · run the matrix to see your own plugins here'
-            : '')),
+          t('matrixOf', { plugins: (data.matrix && data.matrix.plugins) || 0, date: formatDate(data.matrix && data.matrix.generatedAt) })
+          + ' · ' + t('installed', { total: s.total, known: s.known, atRisk: s.atRisk })
+          + (data.matrix && data.matrix.hasPerPluginData === false ? t('noPerPlugin') : '')),
         // The upgrade banner: the running version is behind the matrix's newest,
         // and at least one installed plugin would get a worse verdict there.
         // It sits above the table because it is the one thing that changes what
@@ -192,10 +281,9 @@ window.__ModuleLoader__.load({
               },
             },
             React.createElement('div', { style: { fontWeight: 600, color: T.text, marginBottom: '2px' } },
-              'DSH ' + data.upgrade.latest + ' is available'),
+              t('upgradeTitle', { version: data.upgrade.latest })),
             React.createElement('div', { style: { color: T.secondary } },
-              data.upgrade.worse + ' of your installed plugin' + (data.upgrade.worse === 1 ? '' : 's')
-              + ' would get a worse verdict on ' + data.upgrade.latest + '. You are running ' + data.upgrade.running + '.'))
+              t('upgradeBody', { count: data.upgrade.worse, version: data.upgrade.latest, running: data.upgrade.running })))
           : null,
         data.profile && data.profile.error
           ? React.createElement('div', { style: { ...quiet, padding: '0 0 8px' } }, data.profile.error)
@@ -205,9 +293,9 @@ window.__ModuleLoader__.load({
           React.createElement('tbody', null, bodyRows)),
         ecosystem && ecoVersions.length > 0 ? React.createElement('div', { style: { marginTop: '28px' } },
           React.createElement('div', { style: { color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' } },
-            'The matrix so far'),
+            t('theMatrixSoFar')),
           React.createElement('div', { style: { color: T.secondary, fontSize: '13px', marginBottom: '12px' } },
-            (data.matrix.plugins || 0) + ' plugins probed across ' + ecoVersions.length + ' DSH versions'),
+            t('probedAcross', { plugins: (data.matrix.plugins || 0), versions: ecoVersions.length })),
           ecoVersions.map((v) => {
             const tally = ecosystem.versions[v] || {};
             const total = Object.values(tally).reduce((a, b) => a + b, 0);
@@ -219,7 +307,7 @@ window.__ModuleLoader__.load({
               React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' } },
                 React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, v),
                 React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } },
-                  active + ' active · ' + rejected + ' refused · ' + waiting + ' awaiting · ' + pct + '% mounted')),
+                  active + ' ' + t('active') + ' · ' + rejected + ' ' + t('refused') + ' · ' + waiting + ' ' + t('awaiting') + ' · ' + pct + '% ' + t('mounted'))),
               React.createElement('div', { style: { height: '3px', borderRadius: '999px', background: T.surface, overflow: 'hidden', display: 'flex' } },
                 React.createElement('div', { style: { width: (total > 0 ? (active / total) * 100 : 0) + '%', background: STATUS.active.color } }),
                 React.createElement('div', { style: { width: (total > 0 ? (waiting / total) * 100 : 0) + '%', background: STATUS['awaiting-service'].color } }),
@@ -227,10 +315,7 @@ window.__ModuleLoader__.load({
           })) : null,
         React.createElement('div', {
           style: { color: T.tertiary, fontSize: '12px', marginTop: '16px', paddingTop: '12px', borderTop: T.hairline, lineHeight: 1.6 },
-        },
-          'Each cell is a probe result from a throwaway profile, host half only: a plugin whose browser half is loaded in the web app is not exercised by the probe. '
-          + '"untested here" means the plugin was waiting for a service that composition does not provide — it is not a failure. '
-          + 'Cells state detected facts about named packages; they are not a verdict.'));
+        }, t('footer')));
     }
 
     const th = {
@@ -252,14 +337,23 @@ window.__ModuleLoader__.load({
     }
 
     function apply(ctx) {
+      // The locale service is optional: a profile without it still mounts, and
+      // the panel falls back to English.
+      const t = ctx.locale ? ctx.locale.bind(NS) : (key, vars) => {
+        const template = DICT.en[key] || key;
+        return template.replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''));
+      };
+      if (ctx.locale) {
+        ctx.effect(() => ctx.locale.register(NS, DICT), NS + ': dictionaries');
+      }
       ctx.slots.inject('settings.section', () => ctx.slots.register({
         name: 'settings.section',
         id: 'plugin-lint',
         order: 80,
-        label: () => LABEL,
-      }, () => React.createElement(Boundary, null, React.createElement(Panel))));
+        label: () => t('title'),
+      }, () => React.createElement(Boundary, null, React.createElement(Panel, { t }))));
     }
 
-    return { apply, inject: ['slots'] };
+    return { apply, inject: ['slots', 'locale'] };
   },
 });

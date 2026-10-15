@@ -140,6 +140,9 @@ function payload() {
       firstParty: bundle.name.startsWith('@deepseek-ai/'),
       known: known !== undefined,
       cells: known ? withCurrentTrust(known.cells) : [],
+      // The audit is the capability inventory: what the code actually does,
+      // read from the full index when it exists.
+      audit: known?.audit ?? undefined,
     };
   });
   // Aggregate counts: from the full index when available, else from the
