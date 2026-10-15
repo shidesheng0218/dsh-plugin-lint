@@ -175,6 +175,25 @@ window.__ModuleLoader__.load({
         React.createElement('div', { style: { color: T.secondary, fontSize: '13px', margin: '4px 0 16px' } },
           'Matrix of ' + ((data.matrix && data.matrix.plugins) || 0) + ' plugins, generated ' + formatDate(data.matrix && data.matrix.generatedAt)
           + ' · ' + s.total + ' installed, ' + s.known + ' covered, ' + s.atRisk + ' with a failure on some version'),
+        // The upgrade banner: the running version is behind the matrix's newest,
+        // and at least one installed plugin would get a worse verdict there.
+        // It sits above the table because it is the one thing that changes what
+        // the user should do next.
+        data.upgrade && data.upgrade.worse > 0
+          ? React.createElement('div', {
+              style: {
+                padding: '10px 14px', marginBottom: '16px', borderRadius: '6px',
+                border: '1px solid var(--dsw-alias-state-warn-primary, #bf8700)',
+                background: 'var(--dsw-alias-bg-layer-1, rgba(191,135,0,.06))',
+                fontSize: '13px', lineHeight: 1.5,
+              },
+            },
+            React.createElement('div', { style: { fontWeight: 600, color: T.text, marginBottom: '2px' } },
+              'DSH ' + data.upgrade.latest + ' is available'),
+            React.createElement('div', { style: { color: T.secondary } },
+              data.upgrade.worse + ' of your installed plugin' + (data.upgrade.worse === 1 ? '' : 's')
+              + ' would get a worse verdict on ' + data.upgrade.latest + '. You are running ' + data.upgrade.running + '.'))
+          : null,
         data.profile && data.profile.error
           ? React.createElement('div', { style: { ...quiet, padding: '0 0 8px' } }, data.profile.error)
           : null,

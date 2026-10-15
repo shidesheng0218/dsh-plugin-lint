@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lintPackage } from '../src/index.js';
+import { lintPackage, toBadge } from '../src/index.js';
 import { maskSource } from '../src/mask.js';
 
 /** Build a throwaway package on disk and lint it. */
@@ -243,4 +243,25 @@ test('maskSource blanks comments but keeps string literals and line numbers', ()
   assert.equal(strings[0].value, 'value');
   assert.equal(strings[0].line, 2);
   assert.equal(lineStarts.length, 2);
+});
+
+// ---------------------------------------------------------------- badge
+
+test('a badge carries the verdict and the declared DSH versions', () => {
+  const report = lintPackage('panel');
+  const svg = toBadge(report);
+  assert.match(svg, /dsh-plugin-lint/);
+  assert.match(svg, /0 error · 0 warn · 2 DSH/);
+  assert.match(svg, /<svg/);
+  assert.match(svg, /#1a7f37/, 'a clean run is green');
+});
+
+test('a badge turns red on errors', () => {
+  const report = fixture({
+    'package.json': base(),
+    'index.js': 'export function apply(ctx) { ctx.session.append("demo/custom", {}); }',
+  });
+  const svg = toBadge(report);
+  assert.match(svg, /1 error/, 'the count is in the badge');
+  assert.match(svg, /#cf222e/, 'an error is red');
 });

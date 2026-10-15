@@ -137,6 +137,27 @@ function payload() {
       tally[cell.status] = (tally[cell.status] || 0) + 1;
     }
   }
+  // The upgrade banner: the running version is behind the newest the matrix
+  // covers, and at least one installed plugin would get a worse verdict there.
+  const running = runningDshVersion();
+  const versions = index?.dshVersions ?? [];
+  const latest = versions[versions.length - 1];
+  const upgrade = running && latest && running !== latest
+    ? { running, latest, worse: 0 }
+    : undefined;
+  if (upgrade) {
+    const BAD = new Set(['rejected-by-host', 'inactive-error', 'boot-failed']);
+    const RANK = { active: 0, 'awaiting-service': 1, 'rejected-by-host': 2, 'inactive-error': 3, 'boot-failed': 4, 'install-failed': 5 };
+    const best = (cells, v) => (cells ?? []).filter((c) => c.dsh === v).sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9))[0];
+    for (const bundle of installed.bundles ?? []) {
+      if (bundle.name.startsWith('@deepseek-ai/')) continue;
+      const known = byPlugin.get(bundle.name);
+      if (!known) continue;
+      const from = best(known.cells, running);
+      const to = best(known.cells, latest);
+      if (from && to && !BAD.has(from.status) && BAD.has(to.status)) upgrade.worse += 1;
+    }
+  }
   return {
     ok: true,
     dsh: { version: runningDshVersion() },
@@ -147,6 +168,7 @@ function payload() {
       plugins: index?.plugins?.length ?? 0,
       ecosystem,
     },
+    upgrade,
     rows,
   };
 }

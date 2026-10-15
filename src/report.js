@@ -9,6 +9,41 @@ const COLOR = {
 
 const LABEL = { error: 'error', warn: 'warn ', info: 'info ' };
 
+/**
+ * An SVG badge for a README. The badge carries the verdict, not just the brand:
+ * "0 error · 1 warn · compatible with 2 DSH versions". A reader should learn
+ * something from the badge alone.
+ */
+export function toBadge(report) {
+  const s = report.summary;
+  const declared = (report.dsh && report.dsh.declared) || [];
+  const versionText = declared.length > 0 ? ' · ' + declared.length + ' DSH' : '';
+  const label = s.error + ' error · ' + s.warn + ' warn' + versionText;
+  const color = s.error > 0 ? '#cf222e' : s.warn > 0 ? '#bf8700' : '#1a7f37';
+  const left = 'dsh-plugin-lint';
+  const width = 90 + label.length * 6.2;
+  const leftWidth = 96;
+  const rightWidth = width - leftWidth;
+  return [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="' + Math.round(width) + '" height="20" role="img" aria-label="' + left + ': ' + label + '">',
+    '  <title>' + left + ': ' + label + '</title>',
+    '  <linearGradient id="s" x2="0" y2="100%"><stop offset="0" stop-color="#bbb" stop-opacity=".1"/><stop offset="1" stop-opacity=".1"/></linearGradient>',
+    '  <clipPath id="r"><rect width="' + Math.round(width) + '" height="20" rx="3" fill="#fff"/></clipPath>',
+    '  <g clip-path="url(#r)">',
+    '    <rect width="' + leftWidth + '" height="20" fill="#555"/>',
+    '    <rect x="' + leftWidth + '" width="' + Math.round(rightWidth) + '" height="20" fill="' + color + '"/>',
+    '    <rect width="' + Math.round(width) + '" height="20" fill="url(#s)"/>',
+    '  </g>',
+    '  <g fill="#fff" text-anchor="middle" font-family="Verdana,Geneva,DejaVu Sans,sans-serif" text-rendering="geometricPrecision" font-size="110">',
+    '    <text aria-hidden="true" x="' + (leftWidth * 5) + '" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="' + (leftWidth * 10 - 100) + '">' + left + '</text>',
+    '    <text x="' + (leftWidth * 5) + '" y="140" transform="scale(.1)" fill="#fff" textLength="' + (leftWidth * 10 - 100) + '">' + left + '</text>',
+    '    <text aria-hidden="true" x="' + ((leftWidth + rightWidth / 2) * 10) + '" y="150" fill="#010101" fill-opacity=".3" transform="scale(.1)" textLength="' + (rightWidth * 10 - 100) + '">' + label + '</text>',
+    '    <text x="' + ((leftWidth + rightWidth / 2) * 10) + '" y="140" transform="scale(.1)" fill="#fff" textLength="' + (rightWidth * 10 - 100) + '">' + label + '</text>',
+    '  </g>',
+    '</svg>',
+  ].join('\n');
+}
+
 export function formatText(report, options = {}) {
   const paint = (level, text) => (options.color ? COLOR[level] + text + COLOR.reset : text);
   const dim = (text) => (options.color ? COLOR.dim + text + COLOR.reset : text);

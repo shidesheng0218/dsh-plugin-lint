@@ -4,7 +4,7 @@ import { RULES, EVENT_TYPES, localeMeta, DOC } from './rules.js';
 export { RULES, EVENT_TYPES, DOC };
 export { maskSource } from './mask.js';
 export { loadPackage, filesCover } from './load.js';
-export { formatText, toSarif } from './report.js';
+export { formatText, toSarif, toBadge } from './report.js';
 
 const LEVEL_ORDER = { error: 0, warn: 1, info: 2 };
 

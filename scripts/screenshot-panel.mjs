@@ -58,13 +58,16 @@ const installLine = installLog.split('\n').filter((l) => /added|dependencies|rej
 console.log('    ' + (installLine || '(no install output)'));
 
 // A profile holding only the panel itself makes a dull screenshot: every cell
-// is "not covered". --with <pkg> installs one matrix-covered plugin too, so the
-// pills render. The extra install goes into the same throwaway home.
-const extraPlugin = argOf('--with', '');
-if (extraPlugin) {
-  const extraLog = await runToExit(['plugin', '--profile', 'web', 'add', extraPlugin]);
+// is "not covered". --with <pkg> installs matrix-covered plugins too, so the
+// pills render. Repeatable. Extra installs go into the same throwaway home.
+const extras = [];
+for (let i = 0; i < argv.length; i++) {
+  if (argv[i] === '--with' && argv[i + 1]) extras.push(argv[i + 1]);
+}
+for (const extra of extras) {
+  const extraLog = await runToExit(['plugin', '--profile', 'web', 'add', extra]);
   const extraLine = extraLog.split('\n').filter((l) => /added|dependencies|rejected|Error/.test(l)).slice(0, 2).join(' | ');
-  console.log('    also installed ' + extraPlugin + ': ' + (extraLine || '(no install output)'));
+  console.log('    also installed ' + extra + ': ' + (extraLine || '(no install output)'));
 }
 
 console.log('3/5 starting the web server');

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readdirSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { lintPackage, formatText, toSarif } from '../src/index.js';
+import { lintPackage, formatText, toSarif, toBadge } from '../src/index.js';
 
 /**
  * A directory without its own package.json is treated as a container: every
@@ -33,6 +33,7 @@ const USAGE = [
   'Options',
   '  --json                 machine-readable report on stdout',
   '  --sarif                SARIF 2.1.0 report on stdout (for code scanning)',
+  '  --badge                SVG badge on stdout (for a README)',
   '  --dsh-version <ver>    check dsh.compatibility against this DSH version',
   '  --exit-code            exit 1 when any error-level finding is present',
   '  --no-color             disable ANSI colour',
@@ -43,12 +44,13 @@ const USAGE = [
 ].join('\n');
 
 function parseArgs(argv) {
-  const options = { dirs: [], json: false, sarif: false, exitCode: false, color: process.stdout.isTTY === true, quiet: false, dshVersion: undefined };
+  const options = { dirs: [], json: false, sarif: false, badge: false, exitCode: false, color: process.stdout.isTTY === true, quiet: false, dshVersion: undefined };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '-h' || a === '--help') { console.log(USAGE); process.exit(0); }
     else if (a === '--json') options.json = true;
     else if (a === '--sarif') options.sarif = true;
+    else if (a === '--badge') options.badge = true;
     else if (a === '--exit-code') options.exitCode = true;
     else if (a === '--no-color') options.color = false;
     else if (a === '--quiet') options.quiet = true;
@@ -82,6 +84,9 @@ if (options.json) {
   console.log(JSON.stringify(reports.length === 1 ? reports[0] : reports, null, 2));
 } else if (options.sarif) {
   console.log(JSON.stringify(toSarif(reports), null, 2));
+} else if (options.badge) {
+  // A badge is per package: one badge per report, one after another.
+  for (const report of reports) console.log(toBadge(report));
 } else {
   for (const report of reports) {
     console.log(options.quiet
