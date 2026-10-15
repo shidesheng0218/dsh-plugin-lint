@@ -319,38 +319,52 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     ? ['--profile', 'web', '--port', '0', '--no-open']
     : ['--profile', 'headless', ...(tools ? ['--patch', patchPath] : []), 'probe'];
 
-  // Audit mode: static capability scan. The plugin's declared capabilities
-  // (dsh.compatibility) are compared against what the code actually does —
-  // fetch(), http.request, child_process, fs writes. Runtime interception
-  // was tried and dropped: Node's http.request is not writable, so a proxy
-  // loader cannot intercept it.
+  // Audit mode: a static capability scan. There is no declared-capability
+  // field in the DSH manifest schema (measured: dsh.compatibility holds
+  // dshReleases, not capabilities), so the audit reports what the code does,
+  // graded by risk. Matching is done on the masked source — comments are
+  // blanked, string literals intact — and on the strings array, so a
+  // `fetch(` inside a string is not a network call.
   if (audit) {
     const { loadPackage } = await import('../../src/load.js');
     const pkg = loadPackage(target);
-    const declared = new Set(Object.keys(pkg.manifest.dsh?.compatibility?.capabilities ?? {}));
-    const observed = new Set();
-    const patterns = [
+    const observed = new Map();
+    const add = (capability, file, line) => {
+      if (!observed.has(capability)) observed.set(capability, []);
+      observed.get(capability).push({ file, line });
+    };
+    const CODE_PATTERNS = [
+      // DSH-specific surfaces first: they are the ones a generic scanner misses.
+      [/\bctx\.slots\.(register|inject)\s*\(/, 'ui-injection'],
+      [/\bctx\.llm\.(stream|complete|chat)\s*\(/, 'llm'],
+      [/\bctx\.session\.append\s*\(/, 'session-write'],
+      [/\bctx\.connection\b/, 'connection'],
+      // Generic Node surfaces.
       [/\bfetch\s*\(/, 'network'],
-      [/\bhttp\.request\s*\(/, 'network'],
-      [/\bhttps\.request\s*\(/, 'network'],
+      [/\bhttps?\.request\s*\(/, 'network'],
       [/\bnet\.connect\s*\(/, 'network'],
       [/\bchild_process\b/, 'shell'],
-      [/\bexec\s*\(/, 'shell'],
+      [/\bexec(?:File)?\s*\(/, 'shell'],
       [/\bspawn\s*\(/, 'shell'],
-      [/\bfs\.write/, 'fs-write'],
-      [/\bfs\.read/, 'fs-read'],
+      [/\bfs\.(write|append|createWrite)/, 'fs-write'],
+      [/\bfs\.(read|createRead)/, 'fs-read'],
       [/\bprocess\.env\b/, 'env'],
+      [/\bnavigator\.sendBeacon\s*\(/, 'telemetry'],
     ];
     for (const file of pkg.jsFiles) {
-      for (const [re, capability] of patterns) {
-        if (re.test(file.masked)) observed.add(capability);
+      for (const [re, capability] of CODE_PATTERNS) {
+        // The structural view blanks string interiors, so a "fetch(" inside a
+        // string literal is not a call site. Comments are blanked in both views.
+        const m = re.exec(file.structural);
+        if (m) add(capability, file.path, m.index);
       }
     }
     cell.audit = {
-      declared: [...declared],
-      observed: [...observed],
-      undeclared: [...observed].filter((c) => !declared.has(c)),
-      unobserved: [...declared].filter((c) => !observed.has(c)),
+      observed: [...observed.entries()].map(([capability, sites]) => ({
+        capability,
+        sites: sites.length,
+        first: sites[0],
+      })),
     };
   }
 

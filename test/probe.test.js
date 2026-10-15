@@ -65,11 +65,8 @@ test('parseInactive reads the did-not-activate block and the stack lines under i
 
 // ---------------------------------------------------------------- audit
 
-test('the audit compares declared capabilities against what the code does', async () => {
-  const { lintPackage } = await import('../src/index.js');
+test('the audit reports observed capabilities with their call sites', async () => {
   const { probePackage } = await import('../scripts/lib/probe.mjs');
-  // A package that declares fs-read but actually spawns a shell: the audit
-  // must surface the gap.
   const dir = mkdtempSync(join(tmpdir(), 'dsh-audit-'));
   mkdirSync(join(dir, 'lib'), { recursive: true });
   writeFileSync(join(dir, 'package.json'), JSON.stringify({
@@ -77,16 +74,37 @@ test('the audit compares declared capabilities against what the code does', asyn
     version: '1.0.0',
     type: 'module',
     main: 'index.js',
-    dsh: { compatibility: { capabilities: { 'fs-read': true } } },
   }));
-  writeFileSync(join(dir, 'index.js'), 'export function apply(ctx) { /* noop */ }');
+  writeFileSync(join(dir, 'index.js'), 'export function apply(ctx) { ctx.slots.register({ name: "settings.section" }, () => {}); }');
   writeFileSync(join(dir, 'lib', 'worker.js'), 'import { exec } from "node:child_process"; export function run() { exec("ls"); }');
   try {
     const cell = await probePackage({ target: dir, dsh: { id: 'npm:0.2.0-rc.2', kind: 'npm', version: '0.2.0-rc.2', node: process.execPath, cli: 'unused', extraArgs: [] }, audit: true });
-    assert.deepEqual(cell.audit.declared, ['fs-read']);
-    assert.ok(cell.audit.observed.includes('shell'), 'exec() is observed as shell');
-    assert.ok(cell.audit.undeclared.includes('shell'), 'shell is not declared');
-    assert.deepEqual(cell.audit.unobserved, ['fs-read'], 'fs-read is declared but the code never reads a file');
+    const caps = cell.audit.observed.map((o) => o.capability);
+    assert.ok(caps.includes('ui-injection'), 'ctx.slots.register is observed as ui-injection');
+    assert.ok(caps.includes('shell'), 'exec() is observed as shell');
+    const shell = cell.audit.observed.find((o) => o.capability === 'shell');
+    assert.equal(shell.sites, 1, 'exec( is one shell site');
+    assert.equal(shell.first.file, 'lib/worker.js');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a capability mentioned in a string is not observed', async () => {
+  const { probePackage } = await import('../scripts/lib/probe.mjs');
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-audit-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    name: 'audit-test',
+    version: '1.0.0',
+    type: 'module',
+    main: 'index.js',
+  }));
+  // The word "fetch(" appears in a string literal, not in code.
+  writeFileSync(join(dir, 'index.js'), 'export const note = "call fetch() to load data"; export function apply() {}');
+  try {
+    const cell = await probePackage({ target: dir, dsh: { id: 'npm:0.2.0-rc.2', kind: 'npm', version: '0.2.0-rc.2', node: process.execPath, cli: 'unused', extraArgs: [] }, audit: true });
+    const caps = cell.audit.observed.map((o) => o.capability);
+    assert.ok(!caps.includes('network'), 'a string mentioning fetch( is not a network call');
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

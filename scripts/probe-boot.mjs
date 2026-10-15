@@ -57,12 +57,9 @@ for (const name of packages) {
     console.log('                 system prompt ' + cell.systemPrompt.baselineChars + ' -> ' + cell.systemPrompt.chars + ' chars');
   }
   if (cell.audit) {
-    console.log('                 audit: ' + cell.audit.observed.length + ' capabilities observed, ' + cell.audit.declared.length + ' declared');
-    if (cell.audit.undeclared.length > 0) {
-      console.log('                   undeclared: ' + cell.audit.undeclared.join(', '));
-    }
-    if (cell.audit.unobserved.length > 0) {
-      console.log('                   declared but not observed: ' + cell.audit.unobserved.join(', '));
+    console.log('                 audit: ' + cell.audit.observed.length + ' capabilities observed');
+    for (const o of cell.audit.observed) {
+      console.log('                   ' + o.capability + '  (' + o.sites + ' site' + (o.sites === 1 ? '' : 's') + ', first: ' + o.first.file + ')');
     }
   }
   }
