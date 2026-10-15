@@ -186,6 +186,18 @@ function payload() {
       if (from && to && !BAD.has(from.status) && BAD.has(to.status)) upgrade.worse += 1;
     }
   }
+  // Slot conflicts: read the conflicts report from the matrix index when it
+  // exists, and keep only the clashes that involve an installed plugin.
+  const conflicts = [];
+  if (index?.slots?.clashes) {
+    const installedNames = new Set((installed.bundles ?? []).map((b) => b.name));
+    for (const clash of index.slots.clashes) {
+      const involved = clash.plugins.filter((p) => installedNames.has(p));
+      if (involved.length > 1) {
+        conflicts.push({ slot: clash.slot, plugins: involved });
+      }
+    }
+  }
   return {
     ok: true,
     dsh: { version: runningDshVersion() },
@@ -200,6 +212,7 @@ function payload() {
       hasPerPluginData: index !== undefined,
     },
     upgrade,
+    conflicts,
     rows,
   };
 }
@@ -223,6 +236,42 @@ export function apply(ctx) {
         }
       },
     }), 'dsh-plugin-lint-panel: panel route');
+
+    // The action route: fix and isolate operations. Each action is a POST with
+    // a JSON body naming the operation and the target plugin.
+    scoped.effect(() => register({
+      path: ROUTE + '/action',
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: async (request) => {
+        try {
+          const body = await request.json();
+          const { action, plugin } = body;
+          if (!action || !plugin) return Response.json({ ok: false, error: 'action and plugin are required' }, { status: 400 });
+          const { execFile } = await import('node:child_process');
+          const { promisify } = await import('node:util');
+          const execFileAsync = promisify(execFile);
+          const cli = process.argv[1];
+          if (!cli) return Response.json({ ok: false, error: 'cannot locate the dsh CLI' }, { status: 500 });
+
+          if (action === 'fix') {
+            // Reinstall the plugin: remove, then add the latest version.
+            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'remove', plugin], { timeout: 60000 });
+            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'add', plugin], { timeout: 120000 });
+            return Response.json({ ok: true, action: 'fix', plugin });
+          }
+          if (action === 'isolate') {
+            // Disable the plugin by removing it from the profile's bundles.
+            // The package stays installed; it just stops loading.
+            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'remove', plugin], { timeout: 60000 });
+            return Response.json({ ok: true, action: 'isolate', plugin });
+          }
+          return Response.json({ ok: false, error: 'unknown action: ' + action }, { status: 400 });
+        } catch (error) {
+          return Response.json({ ok: false, error: String(error?.message ?? error) }, { status: 500 });
+        }
+      },
+    }), 'dsh-plugin-lint-panel: action route');
   });
 }
 

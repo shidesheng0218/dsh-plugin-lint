@@ -65,6 +65,14 @@ window.__ModuleLoader__.load({
         capSessionWrite: 'session-write',
         capConnection: 'connection',
         capTelemetry: 'telemetry',
+        fix: 'Fix',
+        fixing: 'Fixing…',
+        fixed: 'Fixed',
+        isolate: 'Disable',
+        isolating: 'Disabling…',
+        isolated: 'Disabled',
+        conflictTitle: 'Slot conflicts',
+        conflictBody: '{count} slot names are claimed by more than one plugin. Two plugins claiming the same slot cannot both mount — the later one is discarded.',
       },
       zh: {
         title: '插件兼容性',
@@ -94,6 +102,14 @@ window.__ModuleLoader__.load({
         capSessionWrite: '会话写入',
         capConnection: '连接服务',
         capTelemetry: '遥测',
+        fix: '修复',
+        fixing: '修复中…',
+        fixed: '已修复',
+        isolate: '禁用',
+        isolating: '禁用中…',
+        isolated: '已禁用',
+        conflictTitle: 'Slot 冲突',
+        conflictBody: '{count} 个 slot 名被多个插件认领。两个插件抢同一个 slot 时，后挂载的那个会被丢弃。',
       },
     };
 
@@ -174,6 +190,39 @@ window.__ModuleLoader__.load({
       if (data.ok === false) return React.createElement('div', { style: quiet }, t('panelError') + data.error);
       const versions = (data.matrix && data.matrix.dshVersions) || [];
       const s = summary(data);
+      const [actionState, setActionState] = React.useState({});
+
+      const runAction = (action, plugin) => {
+        setActionState((prev) => ({ ...prev, [plugin]: action + 'ing' }));
+        fetch(ROUTE + '/action', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ action, plugin }),
+        })
+          .then((r) => r.json())
+          .then((result) => {
+            setActionState((prev) => ({ ...prev, [plugin]: result.ok ? action + 'ed' : 'error' }));
+            if (result.ok) setTimeout(() => window.location.reload(), 1500);
+          })
+          .catch(() => setActionState((prev) => ({ ...prev, [plugin]: 'error' })));
+      };
+
+      const actionButton = (action, plugin, label) => {
+        const state = actionState[plugin];
+        const busy = state === action + 'ing';
+        const done = state === action + 'ed';
+        return React.createElement('button', {
+          onClick: () => runAction(action, plugin),
+          disabled: busy || done,
+          style: {
+            padding: '3px 10px', borderRadius: '4px', border: '1px solid ' + T.tertiary,
+            background: done ? STATUS.active.color : 'transparent',
+            color: done ? '#fff' : T.text,
+            fontSize: '11px', cursor: busy || done ? 'default' : 'pointer',
+            opacity: busy ? 0.6 : 1,
+          },
+        }, busy ? t(action + 'ing') : done ? t(action + 'ed') : label);
+      };
 
       // Community plugins carry the matrix cells, so they come first; the bundles
       // the DSH installation provides are grouped under a subdued subhead instead
@@ -186,12 +235,13 @@ window.__ModuleLoader__.load({
       const header = React.createElement('tr', null,
         React.createElement('th', { style: { ...th, width: '100%' } }, 'Plugin'),
         React.createElement('th', { style: th }, t('capabilities')),
-        versions.map((v) => React.createElement('th', { key: v, style: { ...th, fontFamily: T.mono, fontWeight: 500 } }, v)));
+        versions.map((v) => React.createElement('th', { key: v, style: { ...th, fontFamily: T.mono, fontWeight: 500 } }, v)),
+        React.createElement('th', { style: th }, ''));
 
       const subhead = firstParty.length > 0 && community.length > 0
         ? React.createElement('tr', { key: '__firstparty' },
             React.createElement('td', {
-              colSpan: versions.length + 2,
+              colSpan: versions.length + 3,
               style: { padding: '14px 2px 6px', color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' },
             }, 'Bundled with DSH'))
         : null;
@@ -240,7 +290,12 @@ window.__ModuleLoader__.load({
           return React.createElement('td', { key: v, style: td },
             pill(cell.status, title),
             tools ? React.createElement('div', { style: { color: T.tertiary, fontSize: '11px', marginTop: '3px', fontFamily: T.mono } }, '+' + tools + ' tools') : null);
-        }));
+        }),
+        // The action column: fix a refused plugin, or disable one that conflicts.
+        React.createElement('td', { style: { ...td, whiteSpace: 'nowrap' } },
+          row.cells && row.cells.some((c) => c.status === 'rejected-by-host')
+            ? actionButton('fix', row.name, t('fix'))
+            : null));
 
       const bodyRows = [];
       let subheadPlaced = false;
@@ -313,6 +368,19 @@ window.__ModuleLoader__.load({
                 React.createElement('div', { style: { width: (total > 0 ? (waiting / total) * 100 : 0) + '%', background: STATUS['awaiting-service'].color } }),
                 React.createElement('div', { style: { width: (total > 0 ? (rejected / total) * 100 : 0) + '%', background: STATUS['rejected-by-host'].color } })));
           })) : null,
+        // Slot conflicts: two plugins claiming the same slot cannot both mount.
+        // The panel names them and offers to disable one.
+        data.conflicts && data.conflicts.length > 0
+          ? React.createElement('div', { style: { marginTop: '24px', padding: '14px', borderRadius: '6px', border: '1px solid ' + T.hairline, background: T.surface } },
+              React.createElement('div', { style: { fontWeight: 600, fontSize: '13px', color: T.text, marginBottom: '6px' } }, t('conflictTitle')),
+              React.createElement('div', { style: { color: T.secondary, fontSize: '13px', marginBottom: '10px' } }, t('conflictBody', { count: data.conflicts.length })),
+              data.conflicts.map((c) => React.createElement('div', { key: c.slot, style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' } },
+                React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, c.slot),
+                c.plugins.map((p, i) => React.createElement(React.Fragment, { key: p },
+                  i > 0 ? React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } }, ' vs ') : null,
+                  React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, p),
+                  actionButton('isolate', p, t('isolate')))))))
+          : null,
         React.createElement('div', {
           style: { color: T.tertiary, fontSize: '12px', marginTop: '16px', paddingTop: '12px', borderTop: T.hairline, lineHeight: 1.6 },
         }, t('footer')));
