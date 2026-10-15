@@ -17,7 +17,7 @@
  * "not covered", and one hairline under the header instead of a boxed grid.
  */
 window.__ModuleLoader__.load({
-  id: 'dsh-plugin-lint-panel',
+  id: '@shidesheng0218/dsh-plugin-lint-panel',
   factory: (require) => {
     const React = require('react');
 

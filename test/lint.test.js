@@ -255,7 +255,6 @@ test('a badge carries the verdict and the declared DSH versions', () => {
   assert.match(svg, /<svg/);
   assert.match(svg, /#1a7f37/, 'a clean run is green');
 });
-
 test('a badge turns red on errors', () => {
   const report = fixture({
     'package.json': base(),
