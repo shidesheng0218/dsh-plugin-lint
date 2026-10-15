@@ -19,8 +19,8 @@ const FIXTURE_INDEX = {
       name: 'covered-plugin',
       version: '1.0.0',
       cells: [
-        { dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', toolsAdded: ['a_tool'], reproduce: 'probe covered-plugin' },
-        { dsh: '0.2.1-alpha.2', status: 'rejected-by-host', trust: 'verified', toolsAdded: [], reproduce: 'probe covered-plugin' },
+        { dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', at: '2026-01-01T00:00:00.000Z', toolsAdded: ['a_tool'], reproduce: 'probe covered-plugin' },
+        { dsh: '0.2.1-alpha.2', status: 'rejected-by-host', trust: 'verified', at: '2026-01-01T00:00:00.000Z', toolsAdded: [], reproduce: 'probe covered-plugin' },
       ],
     },
   ],
@@ -125,6 +125,39 @@ test('a missing snapshot leaves every plugin uncovered instead of failing', () =
     assert.equal(data.ok, true);
     assert.deepEqual(data.matrix.dshVersions, []);
     assert.equal(data.matrix.plugins, 0);
+  } finally {
+    process.env.DSH_PLUGIN_LINT_INDEX = saved;
+  }
+});
+
+test('a verified cell older than the staleness window is reported as stale', () => {
+  const dir = profile([{ name: 'covered-plugin', version: '1.0.0' }]);
+  withProfile(dir, () => {
+    const row = panel.payload().rows.find((r) => r.name === 'covered-plugin');
+    // The fixture cells are dated 2026-01-01, long past the 30-day window.
+    assert.deepEqual(row.cells.map((c) => c.trust), ['stale', 'stale']);
+  });
+});
+
+test('a recent verified cell keeps its trust', () => {
+  const saved = process.env.DSH_PLUGIN_LINT_INDEX;
+  const fresh = {
+    ...FIXTURE_INDEX,
+    plugins: [{
+      name: 'covered-plugin',
+      version: '1.0.0',
+      cells: [{ dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', at: new Date().toISOString(), toolsAdded: [], reproduce: '' }],
+    }],
+  };
+  const freshPath = join(indexDir, 'fresh-index.json');
+  writeFileSync(freshPath, JSON.stringify(fresh));
+  process.env.DSH_PLUGIN_LINT_INDEX = freshPath;
+  try {
+    const dir = profile([{ name: 'covered-plugin', version: '1.0.0' }]);
+    withProfile(dir, () => {
+      const row = panel.payload().rows.find((r) => r.name === 'covered-plugin');
+      assert.equal(row.cells[0].trust, 'verified');
+    });
   } finally {
     process.env.DSH_PLUGIN_LINT_INDEX = saved;
   }

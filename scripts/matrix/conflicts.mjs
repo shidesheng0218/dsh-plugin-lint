@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 /**
- * Composition conflicts: find plugins that claim the same tool name, and verify
+ * Composition conflicts: find plugins that claim the same name, and verify
  * what the host actually does about it.
  *
  *   node scripts/matrix/conflicts.mjs [--cells matrix/cells] [--verify] [--limit 3]
  *
- * Static pass: read the matrix cells and group registered tool names by owner. A
- * name claimed by two plugins is a candidate conflict.
+ * Static pass, two dimensions:
+ *   tools  read the matrix cells and group registered tool names by owner.
+ *   slots  scan each plugin's client bundle for ctx.slots.register({ name })
+ *          and group the slot names by owner. A name claimed by two plugins is
+ *          a candidate conflict in either dimension.
  *
  * Verify pass (--verify): install each conflicting pair into one throwaway
  * profile and compare the merged tool list against the union of what the two
@@ -20,6 +23,7 @@ import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, statSy
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { probeCombo, probePackage, resolveDsh, startStub } from '../lib/probe.mjs';
+import { loadPackage } from '../../src/load.js';
 
 const ROOT = fileURLToPath(new URL('../..', import.meta.url));
 const argv = process.argv.slice(2);
@@ -80,9 +84,65 @@ const clashes = [...owners.entries()]
 console.log('cells read: ' + cells.length);
 console.log('plugins that register tools: ' + perPlugin.size);
 console.log('distinct tool names: ' + owners.size);
-console.log('names claimed by more than one plugin: ' + clashes.length);
+console.log('tool names claimed by more than one plugin: ' + clashes.length);
 for (const clash of clashes.slice(0, 20)) {
   console.log('  ' + clash.tool + '  <-  ' + clash.owners.map((o) => o.plugin).join(', '));
+}
+
+// ---------------------------------------------------------------- slot pass
+// Slots are not in the cells — a cell records what the host reported, and the
+// host never sees a slot registration. So this pass fetches each covered
+// plugin's tarball and scans its client bundle for the slot names it
+// registers. The scan is static: it reads string literals, it does not run
+// the bundle.
+const slotOwners = new Map();
+const slotScanned = [];
+for (const name of perPlugin.keys()) {
+  const pkgDir = join(cacheRoot, 'pkgs', name);
+  const manifestPath = join(pkgDir, 'package.json');
+  if (!existsSync(manifestPath)) {
+    // The matrix cells name packages the probe installed into throwaway
+    // profiles; nothing kept them. Fetch the published tarball into the cache.
+    mkdirSync(pkgDir, { recursive: true });
+    const fetched = await fetch('https://registry.npmjs.org/' + encodeURIComponent(name))
+      .then((r) => r.json())
+      .then((meta) => {
+        const version = meta['dist-tags']?.latest;
+        const url = meta.versions?.[version]?.dist?.tarball;
+        return url ? { version, url } : undefined;
+      })
+      .catch(() => undefined);
+    if (!fetched) continue;
+    const tarball = await fetch(fetched.url).then((r) => r.arrayBuffer()).catch(() => undefined);
+    if (!tarball) continue;
+    writeFileSync(join(pkgDir, 'pkg.tgz'), Buffer.from(tarball));
+    const { execFileSync } = await import('node:child_process');
+    try { execFileSync('tar', ['xzf', 'pkg.tgz', '--strip-components=1'], { cwd: pkgDir, stdio: 'pipe' }); } catch { continue; }
+  }
+  if (!existsSync(manifestPath)) continue;
+  const pkg = loadPackage(pkgDir);
+  if (!pkg.entries.client || !pkg.exists(pkg.entries.client)) continue;
+  const file = pkg.jsFiles.find((f) => f.path === pkg.entries.client);
+  if (!file) continue;
+  slotScanned.push(name);
+  for (const s of file.strings) {
+    if (!/^[a-z][a-z0-9.-]*$/.test(s.value)) continue;
+    // ctx.slots.register({ name: '...' }) — the slot name is a string literal
+    // whose nearby masked source names the registration call.
+    if (!file.masked.slice(Math.max(0, s.start - 160), s.start).includes('slots.register')) continue;
+    if (!slotOwners.has(s.value)) slotOwners.set(s.value, new Set());
+    slotOwners.get(s.value).add(name);
+  }
+}
+const slotClashes = [...slotOwners.entries()]
+  .filter(([, plugins]) => plugins.size > 1)
+  .map(([slot, plugins]) => ({ slot, plugins: [...plugins] }))
+  .sort((a, b) => b.plugins.length - a.plugins.length || a.slot.localeCompare(b.slot));
+console.log('plugins with a scannable client bundle: ' + slotScanned.length);
+console.log('distinct slot names: ' + slotOwners.size);
+console.log('slot names claimed by more than one plugin: ' + slotClashes.length);
+for (const clash of slotClashes.slice(0, 20)) {
+  console.log('  ' + clash.slot + '  <-  ' + clash.plugins.join(', '));
 }
 
 // ---------------------------------------------------------------- verify pass
@@ -169,8 +229,13 @@ const out = {
   pluginsRegisteringTools: perPlugin.size,
   distinctToolNames: owners.size,
   clashes,
+  slots: {
+    scanned: slotScanned.length,
+    distinctNames: slotOwners.size,
+    clashes: slotClashes,
+  },
   verified,
-  scope: 'Tool-name collisions only. Routes, slot ids and loader rows are not compared yet, and a shared name is a candidate conflict until the verify pass says what the host does with it.',
+  scope: 'Tool names come from probe cells (what the host registered); slot names come from a static scan of client bundles (what the code declares). A shared name is a candidate conflict until the verify pass says what the host does with it. Routes and loader rows are not compared yet.',
 };
 mkdirSync(join(ROOT, 'matrix/index'), { recursive: true });
 writeFileSync(join(ROOT, 'matrix/index/conflicts.json'), JSON.stringify(out, null, 2) + '\n');

@@ -24,9 +24,26 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  */
 const indexPath = () => process.env.DSH_PLUGIN_LINT_INDEX || join(HERE, 'data', 'matrix-index.json');
 const ROUTE = '/api/dsh-plugin-lint/panel';
+/** Same staleness window as the site generator. */
+const STALE_DAYS = 30;
 
 function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
+}
+
+/**
+ * The snapshot carries the trust each cell had when the snapshot was bundled,
+ * but a verified cell does not stay verified: it ages. The site generator
+ * recomputes staleness at render time; the panel must do the same, because a
+ * snapshot bundled in October still says "verified" in November.
+ */
+function withCurrentTrust(cells) {
+  const now = Date.now();
+  return (cells ?? []).map((cell) => {
+    if (cell.trust !== 'verified') return cell;
+    const ageDays = (now - Date.parse(cell.at || '')) / 86400000;
+    return Number.isFinite(ageDays) && ageDays > STALE_DAYS ? { ...cell, trust: 'stale' } : cell;
+  });
 }
 
 /**
@@ -107,7 +124,7 @@ function payload() {
       providedBy: bundle.providedBy,
       firstParty: bundle.name.startsWith('@deepseek-ai/'),
       known: known !== undefined,
-      cells: known?.cells ?? [],
+      cells: known ? withCurrentTrust(known.cells) : [],
     };
   });
   return {
