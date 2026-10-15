@@ -201,11 +201,38 @@ Measured on 2026-10-13 over **228 cells** (57 plugins, two DSH versions, headles
 
 **17 of 57 plugins get a worse verdict on the newer DSH version and none get better**; 14 are the host refusing the install outright, and the largest system-prompt growth observed was 10,862 characters. Aggregate numbers: [docs/09](docs/09-ecosystem-measurements.md).
 
+### Upgrade preview
+
+The matrix answers "which version breaks this plugin"; the preview answers the question a user actually has: **should this profile upgrade?** It reads the profile's installed bundles, joins them against the matrix, and reports what changes on the target version:
+
+```bash
+node scripts/upgrade-preview.mjs ~/.dsh/profiles/default
+```
+
+```text
+Upgrade preview: 0.2.0-rc.2 -> 0.2.1-alpha.2
+Profile ~/.dsh/profiles/default · 8 installed (6 community, 2 first-party)
+
+  2 worse · 0 better · 3 unchanged · 1 not covered by the matrix
+
+  ✗  @michengai/dsh-archive-manager
+      0.2.0-rc.2: active   ->   0.2.1-alpha.2: rejected-by-host
+```
+
+A plugin the matrix does not cover is reported as unknown, not as a verdict. First-party bundles are counted but not previewed — the matrix says nothing about them.
+
 ## Composition conflicts
 
-A plugin that mounts alone can still collide with another. `conflicts.mjs` reads the tool names already recorded in the matrix cells, groups them by owner, and then verifies a candidate by installing the pair into **one** profile.
+A plugin that mounts alone can still collide with another. `conflicts.mjs` scans two dimensions: the tool names recorded in the matrix cells (what the host registered), and the slot names each plugin's client bundle declares (what the code claims). A name claimed by two plugins in either dimension is a candidate, verified by installing the pair into **one** profile.
 
-The sampled ecosystem had no collisions (16 plugins, 118 tool names), so two fixtures claim the same tool name on purpose. Measured result:
+Measured on 2026-10-13 over the sampled ecosystem (16 plugins):
+
+| Dimension | Collisions found |
+| --- | --- |
+| tool names (118 distinct) | **0** |
+| slot names (37 distinct) | **10** — `settings.section` alone is claimed by three plugins |
+
+The tool-name result is a clean bill; the slot result is not. Two fixtures claim the same tool name on purpose to show what a collision looks like:
 
 | Stage | Result |
 | --- | --- |
@@ -221,7 +248,9 @@ It is not "the last one wins" — the later plugin is discarded whole. And becau
 
 ## The panel
 
-[`panel/`](panel/) is a real DSH plugin: a settings section listing what this profile has installed and how each plugin fares across DSH versions, read from the matrix snapshot. The screenshot at the top of this file is it, captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
+[`panel/`](panel/) is a real DSH plugin: a settings section listing what this profile has installed, how each plugin fares across DSH versions, and — below the table — the ecosystem picture: aggregate counts per version, never a package name. The screenshot at the top of this file is it, captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
+
+A profile with no community plugins still shows the matrix overview: 57 plugins probed across 2 DSH versions, and the bars make the upgrade story visible at a glance (80% mounted on 0.2.0-rc.2, 57% on 0.2.1-alpha.2).
 
 ```bash
 node scripts/matrix/bundle-panel-data.mjs          # snapshot the matrix into the package
@@ -368,11 +397,32 @@ W1 规则对应的官方文档原文：
 
 **57 个插件里 17 个在新版 DSH 上结论变差，没有一个变好**；14 个是宿主直接拒绝安装。观测到的最大系统提示词增长是 10,862 字符。聚合数字见 [生态测量](docs/09-ecosystem-measurements.md)。
 
+### 升级预览
+
+矩阵回答"哪个版本会坏"，升级预览回答用户真正的问题：**这个 profile 该不该升**。读当前 profile 装了什么，与矩阵对照，报告目标版本上每个插件的变化：
+
+```bash
+node scripts/upgrade-preview.mjs ~/.dsh/profiles/default
+```
+
+```text
+Upgrade preview: 0.2.0-rc.2 -> 0.2.1-alpha.2
+
+  2 worse · 0 better · 3 unchanged · 1 not covered by the matrix
+
+  ✗  @michengai/dsh-archive-manager
+      0.2.0-rc.2: active   ->   0.2.1-alpha.2: rejected-by-host
+```
+
+矩阵没覆盖的插件报 "not covered / no data"，不是裁决；官方 bundle 计数但不预览——矩阵对它们无话可说。
+
 ### 构成冲突
 
-一个插件单独能挂载，不代表它和别的插件能共存。`conflicts.mjs` 先从矩阵格子里已记录的工具名找候选，再把候选的一对插件装进**同一个** profile 验证。
+一个插件单独能挂载，不代表它和别的插件能共存。`conflicts.mjs` 扫两个维度：矩阵格子里记录的工具名（宿主注册了什么），和每个插件 client bundle 里声明的 slot 名（代码声称要挂到哪）。任一维度撞名即为候选，再装进**同一个** profile 验证。
 
-抽样范围内没有真实冲突（16 个插件、118 个工具名），所以用两个夹具插件故意撞名。实测结果：各自单独装都正常（各 +1 个工具），**装在一起后，后注册的那个整个插件没有挂载**：
+实测（16 个插件）：工具名 **0** 撞名（118 个不同名字），**slot 名 10 个撞名**——`settings.section` 一个位置就有 3 个插件认领。工具名干净，slot 不然。
+
+两个夹具插件故意撞名演示后果：各自单独装都正常（各 +1 个工具），**装在一起后，后注册的那个整个插件没有挂载**：
 
 ```text
 tool-beta: Error: tool "collide_probe" is already registered
@@ -382,7 +432,9 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 ### 面板
 
-[`panel/`](panel/) 是一个真实的 DSH 插件：在设置页列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，数据来自矩阵快照。本文顶部的截图就是它，由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
+[`panel/`](panel/) 是一个真实的 DSH 插件：在设置页列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，下方还有生态全景——各版本上 active / refused / awaiting 的聚合计数（只有数字，没有包名）。本文顶部的截图就是它，由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
+
+即使一个社区插件都没装，面板也不是空表格：57 个插件 × 2 个版本的全貌，以及一眼可见的升级风险（0.2.0-rc.2 上 80% 挂载成功，0.2.1-alpha.2 上掉到 57%）。
 
 它用这个项目的 linter 检查自己是 0 发现：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
 
