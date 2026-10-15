@@ -90,6 +90,17 @@ export async function runDsh(dsh, home, args, env = {}) {
 }
 
 /**
+ * A recording proxy for the audit mode: every request the plugin's process
+ * makes to the outside is logged, then forwarded. The proxy is plain HTTP —
+ * the harness and its plugins run on localhost, so TLS interception is not
+ * needed and would require a CA we do not have.
+ *
+ * Dropped: Node's http.request is not writable, so a proxy loader cannot
+ * intercept it. The audit is a static capability scan instead — see
+ * probePackage's audit block.
+ */
+
+/**
  * Run a long-lived profile until it reports readiness, then stop it.
  *
  * The web profile serves until killed, so readiness is a sentinel line rather
@@ -285,7 +296,7 @@ export async function probeCombo({ targets, dsh, stub, tools = true, keep = fals
  * Probe one package.
  * @returns a cell: the verdict, what it registered, and how to reproduce it.
  */
-export async function probePackage({ target: rawTarget, dsh, stub, tools = false, keep = false, mode = 'headless' }) {
+export async function probePackage({ target: rawTarget, dsh, stub, tools = false, keep = false, mode = 'headless', audit = false }) {
   const target = existsSync(rawTarget) ? resolve(rawTarget) : rawTarget;
   const home = mkdtempSync(join(tmpdir(), 'dsh-probe-'));
   const cell = {
@@ -298,6 +309,7 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
     tools: undefined,
     systemPrompt: undefined,
     packagesAdded: undefined,
+    audit: undefined,
   };
   const started = Date.now();
   const patchPath = join(home, 'probe-patch.yml');
@@ -306,6 +318,41 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
   const bootArgs = mode === 'web'
     ? ['--profile', 'web', '--port', '0', '--no-open']
     : ['--profile', 'headless', ...(tools ? ['--patch', patchPath] : []), 'probe'];
+
+  // Audit mode: static capability scan. The plugin's declared capabilities
+  // (dsh.compatibility) are compared against what the code actually does —
+  // fetch(), http.request, child_process, fs writes. Runtime interception
+  // was tried and dropped: Node's http.request is not writable, so a proxy
+  // loader cannot intercept it.
+  if (audit) {
+    const { loadPackage } = await import('../../src/load.js');
+    const pkg = loadPackage(target);
+    const declared = new Set(Object.keys(pkg.manifest.dsh?.compatibility?.capabilities ?? {}));
+    const observed = new Set();
+    const patterns = [
+      [/\bfetch\s*\(/, 'network'],
+      [/\bhttp\.request\s*\(/, 'network'],
+      [/\bhttps\.request\s*\(/, 'network'],
+      [/\bnet\.connect\s*\(/, 'network'],
+      [/\bchild_process\b/, 'shell'],
+      [/\bexec\s*\(/, 'shell'],
+      [/\bspawn\s*\(/, 'shell'],
+      [/\bfs\.write/, 'fs-write'],
+      [/\bfs\.read/, 'fs-read'],
+      [/\bprocess\.env\b/, 'env'],
+    ];
+    for (const file of pkg.jsFiles) {
+      for (const [re, capability] of patterns) {
+        if (re.test(file.masked)) observed.add(capability);
+      }
+    }
+    cell.audit = {
+      declared: [...declared],
+      observed: [...observed],
+      undeclared: [...observed].filter((c) => !declared.has(c)),
+      unobserved: [...declared].filter((c) => !observed.has(c)),
+    };
+  }
 
   if (tools && mode !== 'web') {
     writeFileSync(patchPath, [
@@ -389,6 +436,8 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
         cell.tools = { error: 'the harness sent no tool-bearing request' };
       }
     }
+    // The audit log is attached to the cell: what the code actually does,
+    // compared against what the manifest declares.
     return cell;
   } finally {
     cell.durationMs = Date.now() - started;

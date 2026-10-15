@@ -2,12 +2,16 @@
 /**
  * Probe one plugin's host half.
  *
- *   node scripts/probe-boot.mjs <npm-package|path> [...] [--tools] [--dsh <version>] [--keep]
+ *   node scripts/probe-boot.mjs <npm-package|path> [...] [--tools] [--dsh <version>] [--keep] [--audit]
  *
  * Without --dsh the installed desktop app is used, which is the fastest path on
  * this machine. With --dsh <version> the CLI comes from npm and runs under plain
  * node, which is how the matrix runs on Linux CI and how a plugin author can run
  * the same probe locally.
+ *
+ * --audit records every outbound request the plugin's process makes through a
+ * local proxy. The result names what the plugin actually connected to, not what
+ * it declared.
  *
  * See docs/10-m4-verification.md and docs/11-m4-capability-probe.md for the
  * method and the failure taxonomy.
@@ -22,6 +26,7 @@ const argOf = (name, fallback) => {
 };
 const keep = argv.includes('--keep');
 const withTools = argv.includes('--tools');
+const withAudit = argv.includes('--audit');
 const dshVersion = argOf('--dsh', undefined);
 const modeArg = argOf('--mode', 'headless');
 // 'both' expands the same way the matrix runner expands it, so one flag means one
@@ -42,7 +47,7 @@ console.log('probing with ' + dsh.id + (withTools ? ' + stub provider' : ''));
 const results = [];
 for (const name of packages) {
   for (const mode of modes) {
-  const cell = await probePackage({ target: name, dsh, stub: mode === 'web' ? undefined : stub, tools: withTools, keep, mode });
+  const cell = await probePackage({ target: name, dsh, stub: mode === 'web' ? undefined : stub, tools: withTools, keep, mode, audit: withAudit });
   results.push({ package: name, mode, ...cell });
   console.log(cell.status.padEnd(16) + name + ' [' + mode + ']  (' + cell.durationMs + ' ms)');
   for (const e of cell.entries) console.log('                 ' + e.id + ': ' + e.reason);
@@ -50,6 +55,15 @@ for (const name of packages) {
     console.log('                 tools ' + cell.tools.baseline + ' -> ' + cell.tools.total
       + (cell.tools.added.length ? '  +' + cell.tools.added.length + ': ' + cell.tools.added.join(', ') : '  (none)'));
     console.log('                 system prompt ' + cell.systemPrompt.baselineChars + ' -> ' + cell.systemPrompt.chars + ' chars');
+  }
+  if (cell.audit) {
+    console.log('                 audit: ' + cell.audit.observed.length + ' capabilities observed, ' + cell.audit.declared.length + ' declared');
+    if (cell.audit.undeclared.length > 0) {
+      console.log('                   undeclared: ' + cell.audit.undeclared.join(', '));
+    }
+    if (cell.audit.unobserved.length > 0) {
+      console.log('                   declared but not observed: ' + cell.audit.unobserved.join(', '));
+    }
   }
   }
 }

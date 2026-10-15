@@ -1,5 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { classify, parseInactive } from '../scripts/lib/probe.mjs';
 
 /**
@@ -58,4 +61,33 @@ test('parseInactive reads the did-not-activate block and the stack lines under i
   assert.equal(entries[0].reason, 'waiting for service: webServer');
   assert.equal(entries[1].reason, 'Error: boom');
   assert.match(entries[1].detail, /at Object\.apply/);
+});
+
+// ---------------------------------------------------------------- audit
+
+test('the audit compares declared capabilities against what the code does', async () => {
+  const { lintPackage } = await import('../src/index.js');
+  const { probePackage } = await import('../scripts/lib/probe.mjs');
+  // A package that declares fs-read but actually spawns a shell: the audit
+  // must surface the gap.
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-audit-'));
+  mkdirSync(join(dir, 'lib'), { recursive: true });
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({
+    name: 'audit-test',
+    version: '1.0.0',
+    type: 'module',
+    main: 'index.js',
+    dsh: { compatibility: { capabilities: { 'fs-read': true } } },
+  }));
+  writeFileSync(join(dir, 'index.js'), 'export function apply(ctx) { /* noop */ }');
+  writeFileSync(join(dir, 'lib', 'worker.js'), 'import { exec } from "node:child_process"; export function run() { exec("ls"); }');
+  try {
+    const cell = await probePackage({ target: dir, dsh: { id: 'npm:0.2.0-rc.2', kind: 'npm', version: '0.2.0-rc.2', node: process.execPath, cli: 'unused', extraArgs: [] }, audit: true });
+    assert.deepEqual(cell.audit.declared, ['fs-read']);
+    assert.ok(cell.audit.observed.includes('shell'), 'exec() is observed as shell');
+    assert.ok(cell.audit.undeclared.includes('shell'), 'shell is not declared');
+    assert.deepEqual(cell.audit.unobserved, ['fs-read'], 'fs-read is declared but the code never reads a file');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
