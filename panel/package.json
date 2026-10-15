@@ -1,10 +1,12 @@
 {
-  "name": "dsh-plugin-lint-panel",
+  "name": "@shidesheng0218/dsh-plugin-lint-panel",
   "version": "0.1.0",
   "description": "Shows how the DeepSeek Harness plugins installed in this profile fare across DSH versions, from the compatibility matrix.",
-  "private": true,
   "type": "module",
   "license": "Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
   "icon": "./icon.svg",
   "exports": {
     ".": "./index.js",

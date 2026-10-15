@@ -123,8 +123,10 @@ test('a missing snapshot leaves every plugin uncovered instead of failing', () =
   try {
     const data = panel.payload();
     assert.equal(data.ok, true);
-    assert.deepEqual(data.matrix.dshVersions, []);
-    assert.equal(data.matrix.plugins, 0);
+    // The aggregate that ships in the package still provides the ecosystem
+    // counts, so plugins is not 0 — but per-plugin rows are not available.
+    assert.equal(data.matrix.hasPerPluginData, false);
+    assert.deepEqual(data.rows, []);
   } finally {
     process.env.DSH_PLUGIN_LINT_INDEX = saved;
   }

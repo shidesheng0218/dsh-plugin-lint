@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-10-15T03:27:08.590Z",
+  "dshVersions": [
+    "0.2.0-rc.2",
+    "0.2.1-alpha.2"
+  ],
+  "plugins": 57,
+  "versions": {
+    "0.2.0-rc.2": {
+      "active": 91,
+      "awaiting-service": 20,
+      "install-failed": 1,
+      "rejected-by-host": 2
+    },
+    "0.2.1-alpha.2": {
+      "rejected-by-host": 30,
+      "active": 65,
+      "awaiting-service": 17,
+      "install-failed": 2
+    }
+  }
+}

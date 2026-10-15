@@ -23,12 +23,27 @@ const HERE = dirname(fileURLToPath(import.meta.url));
  * still renders, with every plugin reported as not covered.
  */
 const indexPath = () => process.env.DSH_PLUGIN_LINT_INDEX || join(HERE, 'data', 'matrix-index.json');
+const aggregatePath = () => join(HERE, 'data', 'aggregate.json');
 const ROUTE = '/api/dsh-plugin-lint/panel';
 /** Same staleness window as the site generator. */
 const STALE_DAYS = 30;
 
 function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
+}
+
+/**
+ * The panel reads two data files: the full matrix index when it exists (local
+ * runs, named packages), and the aggregate that ships in the npm package
+ * (counts per version, never a package name). A user who installs the panel
+ * from npm without running the matrix sees the ecosystem picture; a user who
+ * also runs the matrix sees their own plugins against it.
+ */
+function matrixData() {
+  const full = readJson(indexPath());
+  if (full) return { full, aggregate: undefined };
+  const aggregate = readJson(aggregatePath());
+  return { full: undefined, aggregate };
 }
 
 /**
@@ -111,7 +126,7 @@ function installedBundles() {
 }
 
 function payload() {
-  const index = readJson(indexPath());
+  const { full: index, aggregate } = matrixData();
   const installed = installedBundles();
   const byPlugin = new Map((index?.plugins ?? []).map((p) => [p.name, p]));
   const rows = (installed.bundles ?? []).map((bundle) => {
@@ -127,14 +142,24 @@ function payload() {
       cells: known ? withCurrentTrust(known.cells) : [],
     };
   });
-  // Aggregate counts across the whole matrix — never a package name — so the
-  // client can show the ecosystem picture without the snapshot naming anyone.
+  // Aggregate counts: from the full index when available, else from the
+  // aggregate that ships in the npm package. Never a package name.
   const ecosystem = { versions: {} };
-  for (const plugin of index?.plugins ?? []) {
+  const source = index ?? aggregate;
+  // The full index's plugins is an array of named plugins; the aggregate's is a
+  // count. Only the array carries cells to tally.
+  const plugins = Array.isArray(source?.plugins) ? source.plugins : [];
+  for (const plugin of plugins) {
     for (const cell of plugin.cells ?? []) {
       if (!ecosystem.versions[cell.dsh]) ecosystem.versions[cell.dsh] = {};
       const tally = ecosystem.versions[cell.dsh];
       tally[cell.status] = (tally[cell.status] || 0) + 1;
+    }
+  }
+  // The aggregate already carries the tally; use it directly.
+  if (!index && aggregate?.versions) {
+    for (const [v, tally] of Object.entries(aggregate.versions)) {
+      ecosystem.versions[v] = { ...tally };
     }
   }
   // The upgrade banner: the running version is behind the newest the matrix
@@ -163,10 +188,13 @@ function payload() {
     dsh: { version: runningDshVersion() },
     profile: { dir: installed.dir, error: installed.error },
     matrix: {
-      generatedAt: index?.generatedAt,
-      dshVersions: index?.dshVersions ?? [],
-      plugins: index?.plugins?.length ?? 0,
+      generatedAt: (index ?? aggregate)?.generatedAt,
+      dshVersions: (index ?? aggregate)?.dshVersions ?? [],
+      plugins: Array.isArray((index ?? aggregate)?.plugins) ? (index ?? aggregate).plugins.length : ((index ?? aggregate)?.plugins ?? 0),
       ecosystem,
+      // The client needs to know whether it can offer a per-plugin verdict:
+      // the full index names packages, the aggregate does not.
+      hasPerPluginData: index !== undefined,
     },
     upgrade,
     rows,

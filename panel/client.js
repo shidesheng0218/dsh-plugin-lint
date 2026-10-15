@@ -174,7 +174,10 @@ window.__ModuleLoader__.load({
             'DSH ' + ((data.dsh && data.dsh.version) || 'unknown'))),
         React.createElement('div', { style: { color: T.secondary, fontSize: '13px', margin: '4px 0 16px' } },
           'Matrix of ' + ((data.matrix && data.matrix.plugins) || 0) + ' plugins, generated ' + formatDate(data.matrix && data.matrix.generatedAt)
-          + ' · ' + s.total + ' installed, ' + s.known + ' covered, ' + s.atRisk + ' with a failure on some version'),
+          + ' · ' + s.total + ' installed, ' + s.known + ' covered, ' + s.atRisk + ' with a failure on some version'
+          + (data.matrix && data.matrix.hasPerPluginData === false
+            ? ' · run the matrix to see your own plugins here'
+            : '')),
         // The upgrade banner: the running version is behind the matrix's newest,
         // and at least one installed plugin would get a worse verdict there.
         // It sits above the table because it is the one thing that changes what
