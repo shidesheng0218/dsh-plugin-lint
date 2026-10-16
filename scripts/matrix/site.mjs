@@ -74,6 +74,7 @@ const index = {
         trust: trustOf(c),
         at: c.run.at,
         toolsAdded: c.result.tools?.added ?? [],
+        audit: c.result.audit,
         systemPromptChars: c.result.systemPrompt?.chars,
         clientHalf: c.result.clientHalf,
         reproduce: c.reproduce.command,

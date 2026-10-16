@@ -97,7 +97,7 @@ async function runCell(task) {
   const stub = useTools && mode !== 'web' ? await startStub() : undefined;
   let cell;
   try {
-    cell = await probePackage({ target: target.name, dsh, stub, tools: useTools, keep, mode });
+    cell = await probePackage({ target: target.name, dsh, stub, tools: useTools, keep, mode, audit: true });
   } catch (error) {
     cell = { status: 'boot-failed', install: 'crashed', entries: [], durationMs: 0, note: String(error.message).slice(0, 300) };
   } finally {
@@ -118,6 +118,7 @@ async function runCell(task) {
       tools: cell.tools,
       systemPrompt: cell.systemPrompt,
       packagesAdded: cell.packagesAdded,
+      audit: cell.audit,
       clientHalf: 'not-covered',
     },
     evidence: { note: cell.note, install: cell.install, installOutput: cell.installOutput },

@@ -325,7 +325,10 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
   // graded by risk. Matching is done on the masked source — comments are
   // blanked, string literals intact — and on the strings array, so a
   // `fetch(` inside a string is not a network call.
-  if (audit) {
+  // The audit reads source from disk. For a local path the package is there;
+  // for an npm package name it is installed into the profile first, so the
+  // audit runs after the install step on the installed copy.
+  if (audit && existsSync(rawTarget)) {
     const { loadPackage } = await import('../../src/load.js');
     const pkg = loadPackage(target);
     const observed = new Map();
@@ -418,6 +421,49 @@ export async function probePackage({ target: rawTarget, dsh, stub, tools = false
       // The plugin landed, so the non-zero exit was noise (peer-dependency warnings).
       cell.install = 'ok-with-warnings';
       cell.installOutput = noteOf(installed.out);
+    }
+
+    // For an npm package name the audit runs on the installed copy.
+    if (audit && !existsSync(rawTarget)) {
+      const { loadPackage } = await import('../../src/load.js');
+      const installedDir = join(home, 'profiles', profile, 'node_modules', target);
+      if (existsSync(installedDir)) {
+        const pkg = loadPackage(installedDir);
+        const observed = new Map();
+        const add = (capability, file, line) => {
+          if (!observed.has(capability)) observed.set(capability, []);
+          observed.get(capability).push({ file, line });
+        };
+        const CODE_PATTERNS = [
+          [/\bctx\.slots\.(register|inject)\s*\(/, 'ui-injection'],
+          [/\bctx\.llm\.(stream|complete|chat)\s*\(/, 'llm'],
+          [/\bctx\.session\.append\s*\(/, 'session-write'],
+          [/\bctx\.connection\b/, 'connection'],
+          [/\bfetch\s*\(/, 'network'],
+          [/\bhttps?\.request\s*\(/, 'network'],
+          [/\bnet\.connect\s*\(/, 'network'],
+          [/\bchild_process\b/, 'shell'],
+          [/\bexec(?:File)?\s*\(/, 'shell'],
+          [/\bspawn\s*\(/, 'shell'],
+          [/\bfs\.(write|append|createWrite)/, 'fs-write'],
+          [/\bfs\.(read|createRead)/, 'fs-read'],
+          [/\bprocess\.env\b/, 'env'],
+          [/\bnavigator\.sendBeacon\s*\(/, 'telemetry'],
+        ];
+        for (const file of pkg.jsFiles) {
+          for (const [re, capability] of CODE_PATTERNS) {
+            const m = re.exec(file.structural);
+            if (m) add(capability, file.path, m.index);
+          }
+        }
+        cell.audit = {
+          observed: [...observed.entries()].map(([capability, sites]) => ({
+            capability,
+            sites: sites.length,
+            first: sites[0],
+          })),
+        };
+      }
     }
 
     // 3. boot again and read what changed
