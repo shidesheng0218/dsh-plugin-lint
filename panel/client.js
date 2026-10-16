@@ -182,6 +182,10 @@ window.__ModuleLoader__.load({
         return () => { alive = false; };
       }, []);
 
+      // Hooks come before the early returns: React error #310 is what a hook
+      // after a conditional return costs.
+      const [actionState, setActionState] = React.useState({});
+
       const quiet = { color: T.secondary, fontSize: '13px', padding: '16px 0' };
       if (state.phase === 'loading') return React.createElement('div', { style: quiet }, t('loading'));
       if (state.phase === 'error') return React.createElement('div', { style: quiet }, t('error') + state.error);
@@ -190,7 +194,6 @@ window.__ModuleLoader__.load({
       if (data.ok === false) return React.createElement('div', { style: quiet }, t('panelError') + data.error);
       const versions = (data.matrix && data.matrix.dshVersions) || [];
       const s = summary(data);
-      const [actionState, setActionState] = React.useState({});
 
       const runAction = (action, plugin) => {
         setActionState((prev) => ({ ...prev, [plugin]: action + 'ing' }));
@@ -266,17 +269,21 @@ window.__ModuleLoader__.load({
             (row.version || (row.providedBy === 'dsh-installation' ? 'bundled with DSH' : 'not installed'))
             + (row.known || row.firstParty ? '' : ' · not in the matrix'))),
         // The capability column: what the audit observed, as compact tags.
-        React.createElement('td', { style: td },
+        React.createElement('td', { style: { ...td, maxWidth: '180px' } },
           row.audit && row.audit.observed && row.audit.observed.length > 0
-            ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '4px' } },
-                row.audit.observed.map((o) => React.createElement('span', {
+            ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '3px' } },
+                row.audit.observed.slice(0, 4).map((o) => React.createElement('span', {
                   key: o.capability,
                   title: o.sites + ' site' + (o.sites === 1 ? '' : 's') + ', first: ' + o.first.file,
                   style: {
-                    display: 'inline-block', padding: '1px 6px', borderRadius: '4px',
-                    background: T.surface, color: T.secondary, fontSize: '11px', fontFamily: T.mono,
+                    display: 'inline-block', padding: '0 5px', borderRadius: '3px',
+                    background: T.surface, color: T.secondary, fontSize: '10px', lineHeight: '16px',
+                    fontFamily: T.mono, whiteSpace: 'nowrap',
                   },
-                }, CAPABILITY_LABEL[o.capability] || o.capability)))
+                }, CAPABILITY_LABEL[o.capability] || o.capability)),
+                row.audit.observed.length > 4
+                  ? React.createElement('span', { style: { color: T.tertiary, fontSize: '10px' } }, '+' + (row.audit.observed.length - 4))
+                  : null)
             : React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } }, '—')),
         versions.map((v) => {
           const cells = cellsFor(row, v);
