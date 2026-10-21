@@ -39,6 +39,18 @@ jobs:
       - name: Unit tests
         run: npm test
 
+      # Fail before the version bump, not after it: a missing or placeholder
+      # token must not leave an unpublished bump commit on main.
+      - name: Check the registry token
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NODE_AUTH_TOKEN" ]; then
+            echo "::error::NPM_TOKEN is not set. Add an npm Automation token as a repository secret."
+            exit 1
+          fi
+          npm whoami
+
       - name: Bump the version when it is already published
         id: version
         run: |
