@@ -32,6 +32,47 @@ function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
 }
 
+/** The version this install is running, read from the package's own manifest. */
+function currentVersion() {
+  return readJson(join(HERE, 'package.json'))?.version;
+}
+
+/** Strictly newer, numeric segments only — the published versions are plain x.y.z. */
+export function isNewer(latest, current) {
+  const a = String(latest ?? '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const b = String(current ?? '').split('.').map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return false;
+}
+
+/**
+ * The latest published version, cached for six hours.
+ *
+ * A failed lookup is not an error: the panel works offline, and an update
+ * notice is a convenience, not a dependency. The timeout is short so opening
+ * the settings page is never held up by the registry.
+ */
+const UPDATE_TTL_MS = 6 * 60 * 60 * 1000;
+let updateCache;
+async function latestPublishedVersion() {
+  const now = Date.now();
+  if (updateCache && now - updateCache.at < UPDATE_TTL_MS) return updateCache.version;
+  try {
+    const response = await fetch('https://registry.npmjs.org/@shidesheng0218/dsh-plugin-lint-panel/latest', {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) return undefined;
+    const meta = await response.json();
+    const version = typeof meta?.version === 'string' ? meta.version : undefined;
+    if (version) updateCache = { at: now, version };
+    return version;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * The panel reads two data files: the full matrix index when it exists (local
  * runs, named packages), and the aggregate that ships in the npm package
@@ -231,7 +272,13 @@ export function apply(ctx) {
       requestBody: 'buffered',
       fetch: async () => {
         try {
-          return Response.json(payload(), { headers: { 'cache-control': 'no-store' } });
+          const data = payload();
+          // The update check is best-effort and never blocks the page: a failed
+          // or slow registry lookup leaves `update` undefined.
+          const latest = await latestPublishedVersion();
+          const current = currentVersion();
+          if (latest && current && isNewer(latest, current)) data.update = { current, latest };
+          return Response.json(data, { headers: { 'cache-control': 'no-store' } });
         } catch (error) {
           return Response.json({ ok: false, error: String(error?.message ?? error) }, { status: 500 });
         }
@@ -276,5 +323,5 @@ export function apply(ctx) {
   });
 }
 
-export { payload, runningDshVersion, installedBundles, ROUTE };
+export { payload, runningDshVersion, installedBundles, currentVersion, ROUTE };
 void existsSync;

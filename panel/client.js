@@ -71,6 +71,8 @@ window.__ModuleLoader__.load({
         isolate: 'Disable',
         isolating: 'Disabling…',
         isolated: 'Disabled',
+        updateTitle: 'Panel {latest} is available',
+        updateBody: 'You are running {current}. To update: dsh plugin remove @shidesheng0218/dsh-plugin-lint-panel, then dsh plugin add @shidesheng0218/dsh-plugin-lint-panel.',
         conflictTitle: 'Slot conflicts',
         conflictBody: '{count} slot names are claimed by more than one plugin. Two plugins claiming the same slot cannot both mount — the later one is discarded.',
       },
@@ -108,6 +110,8 @@ window.__ModuleLoader__.load({
         isolate: '禁用',
         isolating: '禁用中…',
         isolated: '已禁用',
+        updateTitle: '面板 {latest} 已发布',
+        updateBody: '你正在使用 {current}。更新方式：先 dsh plugin remove @shidesheng0218/dsh-plugin-lint-panel，再 dsh plugin add @shidesheng0218/dsh-plugin-lint-panel。',
         conflictTitle: 'Slot 冲突',
         conflictBody: '{count} 个 slot 名被多个插件认领。两个插件抢同一个 slot 时，后挂载的那个会被丢弃。',
       },
@@ -329,6 +333,21 @@ window.__ModuleLoader__.load({
           t('matrixOf', { plugins: (data.matrix && data.matrix.plugins) || 0, date: formatDate(data.matrix && data.matrix.generatedAt) })
           + ' · ' + t('installed', { total: s.total, known: s.known, atRisk: s.atRisk })
           + (data.matrix && data.matrix.hasPerPluginData === false ? t('noPerPlugin') : '')),
+        // The panel's own update notice: a newer version is on npm. It names
+        // the two commands because the host has no plugin auto-update.
+        data.update
+          ? React.createElement('div', {
+              style: {
+                padding: '10px 14px', marginBottom: '12px', borderRadius: '6px',
+                border: '1px solid ' + T.hairline, background: T.surface,
+                fontSize: '13px', lineHeight: 1.5,
+              },
+            },
+            React.createElement('div', { style: { fontWeight: 600, color: T.text, marginBottom: '2px' } },
+              t('updateTitle', { latest: data.update.latest })),
+            React.createElement('div', { style: { color: T.secondary } },
+              t('updateBody', { current: data.update.current })))
+          : null,
         // The upgrade banner: the running version is behind the matrix's newest,
         // and at least one installed plugin would get a worse verdict there.
         // It sits above the table because it is the one thing that changes what

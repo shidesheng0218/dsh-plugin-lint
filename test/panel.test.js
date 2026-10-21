@@ -165,6 +165,21 @@ test('a recent verified cell keeps its trust', () => {
   }
 });
 
+test('isNewer compares plain x.y.z versions numerically', () => {
+  assert.equal(panel.isNewer('0.1.5', '0.1.4'), true);
+  assert.equal(panel.isNewer('0.1.4', '0.1.4'), false);
+  assert.equal(panel.isNewer('0.2.0', '0.1.9'), true);
+  assert.equal(panel.isNewer('1.0.0', '0.99.99'), true);
+  assert.equal(panel.isNewer('0.1.10', '0.1.9'), true, '10 is newer than 9, not "1" vs "9"');
+  assert.equal(panel.isNewer('0.1.4', '0.1.5'), false);
+  assert.equal(panel.isNewer(undefined, '0.1.4'), false);
+  assert.equal(panel.isNewer('not-a-version', '0.1.4'), false);
+});
+
+test('the panel knows its own version', () => {
+  assert.match(panel.currentVersion(), /^\d+\.\d+\.\d+/);
+});
+
 test('the route path is stable', () => {
   assert.equal(panel.ROUTE, '/api/dsh-plugin-lint/panel');
 });
