@@ -23,7 +23,10 @@ concurrency:
 
 jobs:
   publish:
-    if: "!contains(github.event.head_commit.message, '[skip publish]')"
+    # Guard against the bump commit re-triggering this job. Match the subject
+    # prefix, not a marker anywhere in the message — the first version used
+    # contains(), and a commit body that merely described the marker matched it.
+    if: "!startsWith(github.event.head_commit.message, 'chore(panel): publish')"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +55,7 @@ jobs:
             npm version patch --no-git-tag-version
             bumped=$(node -p "require('./package.json').version")
             git add package.json
-            git commit -m "chore(panel): publish $name@$bumped [skip publish]"
+            git commit -m "chore(panel): publish $name@$bumped"
             git push
             echo "version=$bumped" >> "$GITHUB_OUTPUT"
           else
