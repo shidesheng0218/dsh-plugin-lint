@@ -181,6 +181,8 @@ npx @shidesheng0218/dsh-plugin-lint . --exit-code  # exit 1 when an error-level 
 
 Exit codes: `0` ok · `1` errors found with `--exit-code` · `2` the run failed.
 
+Commands in this README that start with `node scripts/` run from a **checkout of this repository** — the matrix runner, the upgrade preview, and the report builders read files the npm package does not ship. The npm package ships the linter CLI, the probe (also available as `dsh-plugin-probe`), and the library.
+
 ## The compatibility matrix
 
 The probe also runs as a grid: one cell per plugin version × DSH version × composition.
@@ -469,6 +471,8 @@ node scripts/matrix/run.mjs --targets matrix/targets-top50.json   # 重跑兼容
 ```
 
 退出码：`0` 正常 · `1` 有 error 级发现（配合 `--exit-code`）· `2` 本次运行失败。
+
+本 README 里以 `node scripts/` 开头的命令需要**克隆本仓库**运行——矩阵跑批、升级预览、报告生成都依赖 npm 包里不包含的文件。npm 包提供的是 linter CLI、探针（也可用 `dsh-plugin-probe`）和库。
 
 ### 文档
 

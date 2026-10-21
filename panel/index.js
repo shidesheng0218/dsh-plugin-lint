@@ -259,6 +259,44 @@ function payload() {
   };
 }
 
+/**
+ * The profile this process is serving. The launcher was given `--profile
+ * <name>`; without one the desktop profile is the default. This is the same
+ * derivation profileDir() uses — a fix or isolate action must touch the profile
+ * the user is looking at, not a hardcoded one.
+ */
+export function runningProfileName(argv = process.argv) {
+  const i = argv.indexOf('--profile');
+  const name = i >= 0 ? argv[i + 1] : undefined;
+  return name && !name.startsWith('-') ? name : 'desktop';
+}
+
+/**
+ * The command that performs a panel action, as {file, args, env}.
+ *
+ * Under the desktop app the process is Electron, so the CLI runs through it
+ * with ELECTRON_RUN_AS_NODE — the same way the probe starts a desktop DSH.
+ * Everywhere else it is plain node running the CLI entry point.
+ */
+export function actionCommand(action, plugin, options = {}) {
+  const argv = options.argv ?? process.argv;
+  const cli = options.cli ?? argv[1];
+  if (!cli) throw new Error('cannot locate the dsh CLI');
+  const electron = options.electron ?? Boolean(process.versions.electron);
+  const profile = options.profile ?? runningProfileName(argv);
+  const prefix = [...(electron ? ['--expose-internals'] : []), cli, 'plugin', '--profile', profile];
+  // fix = remove then add (reinstall at the latest version); isolate = remove.
+  const steps = action === 'fix'
+    ? [[...prefix, 'remove', plugin], [...prefix, 'add', plugin]]
+    : [[...prefix, 'remove', plugin]];
+  return {
+    file: options.execPath ?? process.execPath,
+    steps,
+    env: electron ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : { ...process.env },
+    profile,
+  };
+}
+
 export function apply(ctx) {
   ctx.inject(['connection'], (scoped) => {
     const connection = scoped.get('connection');
@@ -299,22 +337,15 @@ export function apply(ctx) {
           const { execFile } = await import('node:child_process');
           const { promisify } = await import('node:util');
           const execFileAsync = promisify(execFile);
-          const cli = process.argv[1];
-          if (!cli) return Response.json({ ok: false, error: 'cannot locate the dsh CLI' }, { status: 500 });
-
-          if (action === 'fix') {
-            // Reinstall the plugin: remove, then add the latest version.
-            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'remove', plugin], { timeout: 60000 });
-            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'add', plugin], { timeout: 120000 });
-            return Response.json({ ok: true, action: 'fix', plugin });
+          if (action !== 'fix' && action !== 'isolate') {
+            return Response.json({ ok: false, error: 'unknown action: ' + action }, { status: 400 });
           }
-          if (action === 'isolate') {
-            // Disable the plugin by removing it from the profile's bundles.
-            // The package stays installed; it just stops loading.
-            await execFileAsync(cli, ['plugin', '--profile', 'desktop', 'remove', plugin], { timeout: 60000 });
-            return Response.json({ ok: true, action: 'isolate', plugin });
+          const plan = actionCommand(action, plugin);
+          for (const args of plan.steps) {
+            // The add step downloads from npm and gets the longer budget.
+            await execFileAsync(plan.file, args, { env: plan.env, timeout: 120000 });
           }
-          return Response.json({ ok: false, error: 'unknown action: ' + action }, { status: 400 });
+          return Response.json({ ok: true, action, plugin, profile: plan.profile });
         } catch (error) {
           return Response.json({ ok: false, error: String(error?.message ?? error) }, { status: 500 });
         }

@@ -58,6 +58,13 @@ jobs:
         if: ${{ inputs.out == '' || inputs.out == 'matrix/cells' }}
         run: node scripts/matrix/site.mjs
 
+      # The panel ships the aggregate (counts only, no package names), so the
+      # refresh has to write it into panel/ — that is what makes the merged PR
+      # a panel release through publish-panel.yml.
+      - name: Snapshot the aggregate into the panel package
+        if: ${{ inputs.out == '' || inputs.out == 'matrix/cells' }}
+        run: node scripts/matrix/bundle-panel-data.mjs
+
       - name: Upload the cells
         uses: actions/upload-artifact@v4
         with:

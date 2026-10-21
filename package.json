@@ -1,6 +1,6 @@
 {
   "name": "@shidesheng0218/dsh-plugin-lint",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.",
   "keywords": [
     "dsh",

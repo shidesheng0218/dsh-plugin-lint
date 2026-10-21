@@ -180,6 +180,38 @@ test('the panel knows its own version', () => {
   assert.match(panel.currentVersion(), /^\d+\.\d+\.\d+/);
 });
 
+test('the running profile comes from the launcher arguments, not a constant', () => {
+  assert.equal(panel.runningProfileName(['node', '/cli.js', '--profile', 'web']), 'web');
+  assert.equal(panel.runningProfileName(['node', '/cli.js', '--profile', 'headless', 'probe']), 'headless');
+  assert.equal(panel.runningProfileName(['node', '/cli.js']), 'desktop', 'no flag means the default profile');
+  assert.equal(panel.runningProfileName(['node', '/cli.js', '--profile', '--port', '0']), 'desktop', 'a flag is not a name');
+});
+
+test('a fix is remove-then-add in the running profile', () => {
+  const plan = panel.actionCommand('fix', 'some-plugin', {
+    argv: ['node', '/cli.js', '--profile', 'web'], cli: '/cli.js', electron: false, execPath: '/node',
+  });
+  assert.equal(plan.profile, 'web');
+  assert.equal(plan.steps.length, 2);
+  assert.equal(plan.steps[0].includes('remove'), true);
+  assert.equal(plan.steps[1].includes('add'), true);
+  assert.equal(plan.steps[0].includes('web'), true, 'the remove targets the running profile');
+  assert.equal(plan.steps[1].includes('web'), true, 'the add targets the running profile');
+  assert.equal(plan.steps[0].includes('--expose-internals'), false, 'plain node needs no Electron flags');
+  assert.equal(plan.env.ELECTRON_RUN_AS_NODE, undefined);
+});
+
+test('an isolate is a single remove, and Electron runs the CLI as node', () => {
+  const plan = panel.actionCommand('isolate', 'some-plugin', {
+    argv: ['electron', '/cli.js', '--profile', 'desktop'], cli: '/cli.js', electron: true, execPath: '/electron',
+  });
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].includes('remove'), true);
+  assert.equal(plan.steps[0][0], '--expose-internals');
+  assert.equal(plan.env.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(plan.file, '/electron');
+});
+
 test('the route path is stable', () => {
   assert.equal(panel.ROUTE, '/api/dsh-plugin-lint/panel');
 });
