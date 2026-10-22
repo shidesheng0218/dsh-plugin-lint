@@ -187,16 +187,15 @@ test('the running profile comes from the launcher arguments, not a constant', ()
   assert.equal(panel.runningProfileName(['node', '/cli.js', '--profile', '--port', '0']), 'desktop', 'a flag is not a name');
 });
 
-test('a fix is remove-then-add in the running profile', () => {
+test('a fix adds the exact installed version in the running profile', () => {
   const plan = panel.actionCommand('fix', 'some-plugin', {
-    argv: ['node', '/cli.js', '--profile', 'web'], cli: '/cli.js', electron: false, execPath: '/node',
+    version: '1.2.3', argv: ['node', '/cli.js', '--profile', 'web'], cli: '/cli.js', electron: false, execPath: '/node',
   });
   assert.equal(plan.profile, 'web');
-  assert.equal(plan.steps.length, 2);
-  assert.equal(plan.steps[0].includes('remove'), true);
-  assert.equal(plan.steps[1].includes('add'), true);
-  assert.equal(plan.steps[0].includes('web'), true, 'the remove targets the running profile');
-  assert.equal(plan.steps[1].includes('web'), true, 'the add targets the running profile');
+  assert.equal(plan.steps.length, 1);
+  assert.equal(plan.steps[0].includes('add'), true);
+  assert.equal(plan.steps[0].at(-1), 'some-plugin@1.2.3');
+  assert.equal(plan.steps[0].includes('web'), true, 'the add targets the running profile');
   assert.equal(plan.steps[0].includes('--expose-internals'), false, 'plain node needs no Electron flags');
   assert.equal(plan.env.ELECTRON_RUN_AS_NODE, undefined);
 });

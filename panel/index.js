@@ -167,6 +167,7 @@ function installedBundles() {
 }
 
 function payload() {
+  const checkedAt = new Date().toISOString();
   const { full: index, aggregate } = matrixData();
   const installed = installedBundles();
   const byPlugin = new Map((index?.plugins ?? []).map((p) => [p.name, p]));
@@ -181,6 +182,21 @@ function payload() {
       firstParty: bundle.name.startsWith('@deepseek-ai/'),
       known: known !== undefined,
       cells: known ? withCurrentTrust(known.cells) : [],
+      health: (() => {
+        const firstParty = bundle.name.startsWith('@deepseek-ai/');
+        const dshVersion = runningDshVersion();
+        const exactVersion = Boolean(bundle.version && known?.version === bundle.version);
+        const currentCells = exactVersion && dshVersion
+          ? withCurrentTrust(known?.cells ?? []).filter((item) => item.dsh === dshVersion) : [];
+        const cell = currentCells[0];
+        const statuses = new Set(currentCells.map((item) => item.status));
+        const state = firstParty ? 'installed' : !bundle.version ? 'missing-install'
+          : !dshVersion || !exactVersion ? 'unverified' : currentCells.length === 0 ? 'unverified' : statuses.size > 1 ? 'mixed' : cell.trust === 'stale' ? 'stale'
+            : cell.status === 'active' ? 'recorded-active'
+              : ['boot-failed', 'inactive-error', 'install-failed', 'rejected-by-host'].includes(cell.status) ? 'recorded-failure'
+                : cell.status === 'awaiting-service' ? 'waiting' : 'mixed';
+        return { state, reason: state === 'recorded-active' ? 'Historical matrix probe recorded active; runtime is not verified.' : `Health state: ${state}.`, evidence: cell ? { dsh: cell.dsh, pluginVersion: known.version, status: cell.status, trust: cell.trust, at: cell.at } : undefined };
+      })(),
       // The audit is the capability inventory: what the code actually does.
       // It lives on the cells, not the plugin row — read it from the first cell
       // that recorded one.
@@ -242,6 +258,8 @@ function payload() {
   }
   return {
     ok: true,
+    checkedAt,
+    summary: { total: rows.length, states: rows.reduce((counts, row) => { counts[row.health.state] = (counts[row.health.state] ?? 0) + 1; return counts; }, {}) },
     dsh: { version: runningDshVersion() },
     profile: { dir: installed.dir, error: installed.error },
     matrix: {
@@ -278,16 +296,23 @@ export function runningProfileName(argv = process.argv) {
  * with ELECTRON_RUN_AS_NODE — the same way the probe starts a desktop DSH.
  * Everywhere else it is plain node running the CLI entry point.
  */
+export function validPackageName(name) {
+  return typeof name === 'string' && (name === '@' ? false : /^(?:@[a-z0-9._~-]+\/[a-z0-9._~-]+|[a-z0-9._~-]+(?:-[a-z0-9._~-]+)*)$/.test(name));
+}
+
+const profileLocks = new Set();
+
 export function actionCommand(action, plugin, options = {}) {
+  if (!['fix', 'isolate'].includes(action) || !validPackageName(plugin)) throw new Error('invalid action or package name');
+  if (action === 'fix' && !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(options.version ?? '')) throw new Error('exact installed version is required');
   const argv = options.argv ?? process.argv;
   const cli = options.cli ?? argv[1];
   if (!cli) throw new Error('cannot locate the dsh CLI');
   const electron = options.electron ?? Boolean(process.versions.electron);
   const profile = options.profile ?? runningProfileName(argv);
   const prefix = [...(electron ? ['--expose-internals'] : []), cli, 'plugin', '--profile', profile];
-  // fix = remove then add (reinstall at the latest version); isolate = remove.
   const steps = action === 'fix'
-    ? [[...prefix, 'remove', plugin], [...prefix, 'add', plugin]]
+    ? [[...prefix, 'add', `${plugin}@${options.version}`]]
     : [[...prefix, 'remove', plugin]];
   return {
     file: options.execPath ?? process.execPath,
@@ -330,24 +355,36 @@ export function apply(ctx) {
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: async (request) => {
+        let plan;
+        let removed = false;
+        let acquired = false;
         try {
+          const origin = request.headers.get('origin');
+          if (origin && new URL(origin).origin !== new URL(request.url).origin) return Response.json({ ok: false, error: { code: 'ORIGIN_MISMATCH', message: 'Cross-origin requests are not allowed' } }, { status: 403 });
           const body = await request.json();
-          const { action, plugin } = body;
-          if (!action || !plugin) return Response.json({ ok: false, error: 'action and plugin are required' }, { status: 400 });
-          const { execFile } = await import('node:child_process');
-          const { promisify } = await import('node:util');
-          const execFileAsync = promisify(execFile);
-          if (action !== 'fix' && action !== 'isolate') {
-            return Response.json({ ok: false, error: 'unknown action: ' + action }, { status: 400 });
-          }
-          const plan = actionCommand(action, plugin);
+          const { action, plugin, confirmed } = body;
+          if (!confirmed) return Response.json({ ok: false, error: { code: 'CONFIRMATION_REQUIRED', message: 'Explicit confirmation is required' } }, { status: 400 });
+          if (action !== 'fix' && action !== 'isolate') return Response.json({ ok: false, error: { code: 'UNKNOWN_ACTION', message: 'Unknown action' } }, { status: 400 });
+          if (!validPackageName(plugin) || plugin.startsWith('@deepseek-ai/')) return Response.json({ ok: false, error: { code: 'INVALID_PLUGIN', message: 'Only community package names are allowed' } }, { status: 400 });
+          const installed = installedBundles().bundles?.find((bundle) => bundle.name === plugin && bundle.version);
+          if (!installed) return Response.json({ ok: false, error: { code: 'NOT_INSTALLED', message: 'Plugin is not installed in the current profile' } }, { status: 404 });
+          plan = actionCommand(action, plugin, { version: installed.version });
+          if (profileLocks.has(plan.profile)) return Response.json({ ok: false, error: { code: 'PROFILE_BUSY', message: 'A profile mutation is already running' } }, { status: 409 });
+          profileLocks.add(plan.profile);
+          acquired = true;
+          const execute = ctx.dshPluginPanelExecutor ?? ((file, args, options) => new Promise((resolve, reject) => {
+            import('node:child_process').then(({ execFile }) => execFile(file, args, options, (error, stdout, stderr) => error ? reject(Object.assign(error, { stdout, stderr })) : resolve({ stdout, stderr })));
+          }));
           for (const args of plan.steps) {
-            // The add step downloads from npm and gets the longer budget.
-            await execFileAsync(plan.file, args, { env: plan.env, timeout: 120000 });
+            try { await execute(plan.file, args, { env: plan.env, timeout: 120000 }); }
+            catch (error) { return Response.json({ ok: false, error: { code: 'EXECUTION_FAILED', message: String(error?.message ?? error), partial: removed, completed: removed ? ['remove'] : [] } }, { status: 500 }); }
+            if (args.includes('remove')) removed = true;
           }
-          return Response.json({ ok: true, action, plugin, profile: plan.profile });
+          return Response.json({ ok: true, action, plugin, version: installed.version, profile: plan.profile });
         } catch (error) {
-          return Response.json({ ok: false, error: String(error?.message ?? error) }, { status: 500 });
+          return Response.json({ ok: false, error: { code: 'BAD_REQUEST', message: String(error?.message ?? error) } }, { status: 400 });
+        } finally {
+          if (acquired) profileLocks.delete(plan.profile);
         }
       },
     }), 'dsh-plugin-lint-panel: action route');

@@ -1,453 +1,443 @@
-/**
- * Browser half: one settings section listing the installed plugins against the
- * compatibility matrix.
- *
- * Only react comes from the browser module table. The reference advises against
- * loading Harness Client packages as modules, so no styling primitive is
- * imported; colours come from the --dsw-alias-* tokens the host already defines,
- * each with a fallback so a renamed token degrades instead of breaking.
- *
- * The component is wrapped in an error boundary: a throwing component blanks its
- * whole slot entry, and a blank settings page is a worse failure than an error
- * message.
- *
- * Visual grammar: the host settings page is a quiet white surface, so the panel
- * is built from type weight and grey steps, not chrome — a filled pill for a
- * verdict (the same weight the host gives its own state labels), a thin dot for
- * "not covered", and one hairline under the header instead of a boxed grid.
- */
 window.__ModuleLoader__.load({
   id: '@shidesheng0218/dsh-plugin-lint-panel',
   factory: (require) => {
     const React = require('react');
-
     const ROUTE = '/api/dsh-plugin-lint/panel';
     const NS = 'dsh-plugin-lint-panel';
-    const LABEL = 'Plugin compatibility';
-
     const T = {
       text: 'var(--dsw-alias-label-primary, currentColor)',
       secondary: 'var(--dsw-alias-label-secondary, currentColor)',
       tertiary: 'var(--dsw-alias-label-tertiary, currentColor)',
-      hairline: '1px solid var(--dsw-alias-border-l1, rgba(128,128,128,.18))',
+      border: '1px solid var(--dsw-alias-border-l1, rgba(128,128,128,.18))',
       surface: 'var(--dsw-alias-bg-layer-1, rgba(128,128,128,.06))',
       mono: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+      success: 'var(--dsw-alias-state-success-primary, #1a7f37)',
+      warn: 'var(--dsw-alias-state-warn-primary, #a35c00)',
+      error: 'var(--dsw-alias-state-error-primary, #cf222e)',
     };
-
-    // Visible UI text goes through the Client locale service: the host's
-    // language setting decides which dictionary each string comes from.
     const DICT = {
       en: {
-        title: 'Plugin compatibility',
-        loading: 'Reading the matrix…',
-        error: 'Could not read the panel data: ',
-        panelError: 'Panel error: ',
-        matrixOf: 'Matrix of {plugins} plugins, generated {date}',
-        installed: '{total} installed, {known} covered, {atRisk} with a failure on some version',
-        noPerPlugin: ' · run the matrix to see your own plugins here',
-        upgradeTitle: 'DSH {version} is available',
-        upgradeBody: '{count} of your installed plugins would get a worse verdict on {version}. You are running {running}.',
-        theMatrixSoFar: 'The matrix so far',
-        probedAcross: '{plugins} plugins probed across {versions} DSH versions',
-        active: 'active',
-        refused: 'refused',
-        awaiting: 'awaiting',
-        mounted: 'mounted',
-        footer: 'Each cell is a probe result from a throwaway profile, host half only: a plugin whose browser half is loaded in the web app is not exercised by the probe. "untested here" means the plugin was waiting for a service that composition does not provide — it is not a failure. Cells state detected facts about named packages; they are not a verdict.',
+        title: 'Plugin Health Center',
+        description: 'See what is healthy, what needs attention, and what has not been verified yet.',
+        loading: 'Checking plugin health…',
+        error: 'Could not read plugin health: ',
+        panelError: 'The panel returned an error: ',
+        unknownError: 'Something went wrong.',
+        healthy: 'Healthy',
+        attention: 'Needs attention',
+        unverified: 'Unverified',
+        checked: 'Last checked {date}',
+        issues: 'Needs attention',
+        noIssues: 'No recorded failures found. Unverified plugins still need checking.',
+        refresh: 'Refresh',
+        summary: '{healthy} healthy, {attention} need attention, {unverified} unverified',
+        recordedActive: 'Historical check passed',
+        mixed: 'Recorded results differ between test setups; check the compatibility details.',
+        evidence: 'Recorded for DSH {dsh}, plugin {version}: {status}',
+        installed: 'Installed; unverified',
+        confirmReinstall: 'Reinstall this plugin?',
+        confirmReinstallBody: 'This runs the plugin installer again in this profile. It may change installed files and does not guarantee that the issue will be resolved.',
+        confirmFix: 'Confirm reinstall',
+        preview: 'Version comparison',
+        previewBody: '{count} plugins have a worse recorded result on DSH {version} than on {running}. This is matrix evidence, not an update notice.',
+        probeActive: 'Probe passed',
+        probeWaiting: 'Waiting for service',
+        probeFailure: 'Probe failed',
+        issueReason: 'Why this needs attention',
+        plugins: 'Your plugins',
+        plugin: 'Plugin',
+        status: 'Status',
+        action: 'Action',
+        reinstall: 'Reinstall',
+        reinstalling: 'Reinstalling…',
+        reinstalled: 'Reinstalled',
+        remove: 'Remove',
+        removing: 'Removing…',
+        removed: 'Removed',
+        confirmRemove: 'Remove this plugin?',
+        confirmRemoveBody: 'This removes the plugin from your profile. You can add it again later.',
+        confirm: 'Confirm remove',
+        cancel: 'Cancel',
+        actionError: 'Action could not be completed: ',
+        notInstalled: 'Not installed',
+        bundled: 'Provided by DSH',
+        unknown: 'Unknown',
+        unverifiedReason: 'This plugin has not been verified for the current setup.',
+        matrix: 'Compatibility details',
+        version: 'Version',
         capabilities: 'Capabilities',
-        capNetwork: 'network',
-        capShell: 'shell',
-        capFsRead: 'fs-read',
-        capFsWrite: 'fs-write',
-        capEnv: 'env',
-        capUiInjection: 'ui-injection',
-        capLlm: 'llm',
-        capSessionWrite: 'session-write',
-        capConnection: 'connection',
-        capTelemetry: 'telemetry',
-        fix: 'Fix',
-        fixing: 'Fixing…',
-        fixed: 'Fixed',
-        isolate: 'Disable',
-        isolating: 'Disabling…',
-        isolated: 'Disabled',
-        updateTitle: 'Panel {latest} is available',
-        updateBody: 'You are running {current}. To update: dsh plugin remove @shidesheng0218/dsh-plugin-lint-panel, then dsh plugin add @shidesheng0218/dsh-plugin-lint-panel.',
-        conflictTitle: 'Slot conflicts',
-        conflictBody: '{count} slot names are claimed by more than one plugin. Two plugins claiming the same slot cannot both mount — the later one is discarded.',
+        conflicts: 'Possible slot overlap',
+        conflictBody: 'These plugins use the same slot name; check their setup before removing anything.',
+        noData: 'No plugin data is available yet.',
+        current: 'Current',
+        covered: 'Covered',
+        historical: 'Historical result; runtime is not verified.',
+        recordedFailure: 'The compatibility check recorded a failure.',
+        waiting: 'The check is waiting for a service.',
+        stale: 'The compatibility result is out of date.',
+        missingInstall: 'The plugin is not installed in this profile.',
+        state: 'Health state: {state}.',
+        details: 'Details',
+        tools: '{count} tools',
+        noCapabilities: 'No capabilities recorded',
+        matrixUnavailable: 'Not covered by the matrix',
+        yes: 'Yes',
+        no: 'No'
       },
       zh: {
-        title: '插件兼容性',
-        loading: '正在读取矩阵…',
-        error: '无法读取面板数据：',
-        panelError: '面板错误：',
-        matrixOf: '矩阵覆盖 {plugins} 个插件，生成于 {date}',
-        installed: '已安装 {total} 个，覆盖 {known} 个，{atRisk} 个在某版本上失败',
-        noPerPlugin: ' · 运行矩阵以查看你自己的插件',
-        upgradeTitle: 'DSH {version} 已发布',
-        upgradeBody: '你安装的 {count} 个插件在 {version} 上会变得更差。你正在运行 {running}。',
-        theMatrixSoFar: '矩阵全景',
-        probedAcross: '已探测 {plugins} 个插件 × {versions} 个 DSH 版本',
-        active: '正常',
-        refused: '被拒绝',
-        awaiting: '等待服务',
-        mounted: '已挂载',
-        footer: '每格是一次性 profile 的探针结果，仅 host 半边：浏览器半边由 web 应用加载，不在探针范围内。"等待服务"表示插件在等待该组合未提供的服务——不是失败。格子陈述的是对具名包的检测事实，不是裁决。',
+        title: '插件健康中心',
+        description: '查看哪些插件正常、哪些需要处理，以及哪些尚未验证。',
+        loading: '正在检查插件健康状态…',
+        error: '无法读取插件健康状态：',
+        panelError: '面板返回错误：',
+        unknownError: '发生了未知错误。',
+        healthy: '状态良好',
+        attention: '需要处理',
+        unverified: '尚未验证',
+        checked: '上次检查：{date}',
+        issues: '需要处理',
+        noIssues: '未发现已记录的失败；尚未验证的插件仍需检查。',
+        refresh: '刷新',
+        summary: '{healthy} 个状态良好，{attention} 个需要处理，{unverified} 个尚未验证',
+        recordedActive: '历史检查通过',
+        mixed: '不同测试设置下的历史结果不一致，请查看兼容性详情。',
+        evidence: '历史记录：DSH {dsh}，插件 {version}：{status}',
+        installed: '已安装，尚未验证',
+        confirmReinstall: '重新安装这个插件？',
+        confirmReinstallBody: '这会在当前 profile 中再次运行插件安装器，可能更改安装文件，并不保证解决问题。',
+        confirmFix: '确认重新安装',
+        preview: '版本比较',
+        previewBody: '相较于 {running}，{count} 个插件在 DSH {version} 的历史检查中结果更差。这是矩阵证据，不是更新通知。',
+        probeActive: '探针通过',
+        probeWaiting: '等待服务',
+        probeFailure: '探针失败',
+        issueReason: '需要处理的原因',
+        plugins: '你的插件',
+        plugin: '插件',
+        status: '状态',
+        action: '操作',
+        reinstall: '重新安装',
+        reinstalling: '重新安装中…',
+        reinstalled: '已重新安装',
+        remove: '移除',
+        removing: '移除中…',
+        removed: '已移除',
+        confirmRemove: '移除这个插件？',
+        confirmRemoveBody: '这会将插件从当前 profile 中移除，之后仍可重新添加。',
+        confirm: '确认移除',
+        cancel: '取消',
+        actionError: '操作未完成：',
+        notInstalled: '未安装',
+        bundled: '由 DSH 提供',
+        unknown: '未知',
+        unverifiedReason: '当前设置尚未验证此插件。',
+        matrix: '兼容性详情',
+        version: '版本',
         capabilities: '能力',
-        capNetwork: '网络',
-        capShell: '命令执行',
-        capFsRead: '读文件',
-        capFsWrite: '写文件',
-        capEnv: '环境变量',
-        capUiInjection: 'UI 注入',
-        capLlm: '模型调用',
-        capSessionWrite: '会话写入',
-        capConnection: '连接服务',
-        capTelemetry: '遥测',
-        fix: '修复',
-        fixing: '修复中…',
-        fixed: '已修复',
-        isolate: '禁用',
-        isolating: '禁用中…',
-        isolated: '已禁用',
-        updateTitle: '面板 {latest} 已发布',
-        updateBody: '你正在使用 {current}。更新方式：先 dsh plugin remove @shidesheng0218/dsh-plugin-lint-panel，再 dsh plugin add @shidesheng0218/dsh-plugin-lint-panel。',
-        conflictTitle: 'Slot 冲突',
-        conflictBody: '{count} 个 slot 名被多个插件认领。两个插件抢同一个 slot 时，后挂载的那个会被丢弃。',
-      },
+        conflicts: '可能存在 Slot 重叠',
+        conflictBody: '这些插件使用了相同的 slot 名称；移除前请先确认配置。',
+        noData: '暂时没有插件数据。',
+        current: '当前',
+        covered: '已覆盖',
+        historical: '历史结果；运行时尚未验证。',
+        recordedFailure: '兼容性检查记录到了失败。',
+        waiting: '检查正在等待服务。',
+        stale: '兼容性结果已过期。',
+        missingInstall: '插件未安装在此 profile 中。',
+        state: '健康状态：{state}。',
+        details: '详情',
+        tools: '{count} 个工具',
+        noCapabilities: '未记录能力',
+        matrixUnavailable: '矩阵未覆盖',
+        yes: '是',
+        no: '否'
+      }
     };
 
-    const STATUS = {
-      active: { color: 'var(--dsw-alias-state-success-primary, #1a7f37)', label: 'active' },
-      'awaiting-service': { color: 'var(--dsw-alias-state-warn-primary, #a35c00)', label: 'untested here' },
-      'rejected-by-host': { color: 'var(--dsw-alias-state-error-primary, #cf222e)', label: 'refused by host' },
-      'inactive-error': { color: 'var(--dsw-alias-state-error-primary, #cf222e)', label: 'failed to mount' },
-      'boot-failed': { color: 'var(--dsw-alias-state-error-primary, #cf222e)', label: 'boot failed' },
-      'install-failed': { color: 'var(--dsw-alias-state-warn-primary, #a35c00)', label: 'install failed' },
-    };
-
-    /** 2026-10-13T06:17:38.145Z -> Oct 13, 2026 — a date is read, a timestamp is not. */
-    function formatDate(iso) {
-      const time = Date.parse(iso || '');
-      if (!Number.isFinite(time)) return iso || 'unknown';
-      return new Date(time).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    // A historical probe cannot establish the health of this running profile.
+    function healthBucket(row) {
+      const state = row.health && row.health.state;
+      if (state === 'healthy' || state === 'verified-active') return 'healthy';
+      if (state === 'recorded-failure' || state === 'missing-install') return 'attention';
+      return 'unverified';
     }
 
-    function pill(status, title) {
-      const style = STATUS[status] || { color: T.tertiary, label: status || 'unknown' };
-      return React.createElement('span', {
-        title,
-        style: {
-          display: 'inline-flex', alignItems: 'center', height: '20px', padding: '0 9px',
-          borderRadius: '999px', background: style.color, color: '#fff',
-          fontSize: '11px', fontWeight: 500, letterSpacing: '0.02em', whiteSpace: 'nowrap',
-        },
-      }, style.label);
-    }
-
-    /** A thin marker for "no cell" — quieter than a dash glyph at text size. */
-    function none() {
-      return React.createElement('span', {
-        title: 'not covered by the matrix',
-        style: { display: 'inline-block', width: '4px', height: '4px', borderRadius: '999px', background: T.tertiary, opacity: 0.55 },
+    function healthReason(row, t) {
+      const state = row.health && row.health.state;
+      const keys = {
+        'recorded-active': 'historical',
+        'recorded-failure': 'recordedFailure',
+        'missing-install': 'missingInstall',
+        waiting: 'waiting', stale: 'stale', installed: 'bundled', mixed: 'mixed',
+      };
+      if (keys[state]) return t(keys[state]);
+      const evidence = row.health && row.health.evidence;
+      if (evidence) return t('evidence', {
+        dsh: evidence.dsh || '?', version: evidence.pluginVersion || '?',
+        status: evidence.status || '?',
       });
+      return row.health && row.health.reason || t('unverifiedReason');
     }
 
-    /** All cells for one DSH version — a plugin may have one per composition. */
-    function cellsFor(row, version) {
-      return (row.cells || []).filter((c) => c.dsh === version);
+    function errorMessage(error, fallback) {
+      if (typeof error === 'string') return error;
+      if (error && typeof error.message === 'string') return error.message;
+      if (error && error.error) return errorMessage(error.error, fallback);
+      return fallback;
     }
 
-    /**
-     * The cell to show: the most favourable verdict, matching the site generator.
-     * "awaiting webServer" in headless and "active" in web are both true, and only
-     * together do they mean anything.
-     */
-    const RANK = { active: 0, 'awaiting-service': 1, 'rejected-by-host': 2, 'inactive-error': 3, 'boot-failed': 4, 'install-failed': 5 };
-    function bestCell(cells) {
-      return cells.slice().sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9))[0];
+    async function request(path, body) {
+      const response = await fetch(path, {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+      let data;
+      try { data = await response.json(); }
+      catch (_) { throw new Error('HTTP ' + response.status); }
+      if (!response.ok || data.ok === false) {
+        throw new Error(errorMessage(data.error || data, 'HTTP ' + response.status));
+      }
+      return data;
     }
 
-    function summary(data) {
-      const rows = data.rows || [];
-      const known = rows.filter((r) => r.known && !r.firstParty);
-      const atRisk = known.filter((r) => (r.cells || []).some((c) => c.status === 'rejected-by-host' || c.status === 'inactive-error'));
-      return { total: rows.length, known: known.length, atRisk: atRisk.length };
+    function formatDate(value) {
+      const time = Date.parse(value || '');
+      return Number.isFinite(time) ? new Date(time).toLocaleString() : '';
     }
+
+    const buttonStyle = {
+      padding: '6px 11px', borderRadius: '4px', border: T.border,
+      background: 'transparent', color: T.text, cursor: 'pointer', fontSize: '12px',
+    };
+    const quiet = { color: T.secondary, fontSize: '13px', lineHeight: 1.6 };
+    const heading = { fontSize: '15px', fontWeight: 600, margin: '0 0 10px' };
+    const tableCell = {
+      textAlign: 'left', padding: '9px 12px 9px 0', borderBottom: T.border,
+      fontSize: '12px', verticalAlign: 'top',
+    };
 
     function Panel({ t }) {
       const [state, setState] = React.useState({ phase: 'loading' });
+      const [actions, setActions] = React.useState({});
+      const [confirmation, setConfirmation] = React.useState(null);
+      const [notice, setNotice] = React.useState('');
+      const mounted = React.useRef(false);
+      const confirmationRef = React.useRef(null);
+      const triggerRef = React.useRef(null);
+      const busyRef = React.useRef(false);
+
+      const refresh = async () => {
+        setState((previous) => ({ ...previous, refreshing: true, error: '' }));
+        try {
+          const data = await request(ROUTE);
+          if (mounted.current) setState({ phase: 'ready', data });
+        } catch (error) {
+          if (mounted.current) setState((previous) => ({
+            ...previous, phase: previous.data ? 'ready' : 'error', refreshing: false,
+            error: errorMessage(error, t('unknownError')),
+          }));
+        }
+      };
       React.useEffect(() => {
-        let alive = true;
-        fetch(ROUTE, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })
-          .then((response) => response.json())
-          .then((data) => { if (alive) setState({ phase: 'ready', data }); })
-          .catch((error) => { if (alive) setState({ phase: 'error', error: String((error && error.message) || error) }); });
-        return () => { alive = false; };
+        mounted.current = true;
+        refresh();
+        return () => { mounted.current = false; };
       }, []);
+      React.useEffect(() => {
+        if (confirmation && confirmationRef.current) confirmationRef.current.focus();
+      }, [confirmation]);
 
-      // Hooks come before the early returns: React error #310 is what a hook
-      // after a conditional return costs.
-      const [actionState, setActionState] = React.useState({});
-
-      const quiet = { color: T.secondary, fontSize: '13px', padding: '16px 0' };
-      if (state.phase === 'loading') return React.createElement('div', { style: quiet }, t('loading'));
-      if (state.phase === 'error') return React.createElement('div', { style: quiet }, t('error') + state.error);
+      const dismissConfirmation = () => {
+        setConfirmation(null);
+        if (triggerRef.current && triggerRef.current.isConnected) triggerRef.current.focus();
+      };
+      const runAction = async () => {
+        if (!confirmation || busyRef.current) return;
+        const { action, plugin } = confirmation;
+        busyRef.current = true;
+        setActions((previous) => ({ ...previous, [plugin]: { phase: 'working', action } }));
+        setConfirmation(null);
+        try {
+          await request(ROUTE + '/action', { action, plugin, confirmed: true });
+          if (!mounted.current) return;
+          setNotice(t(action === 'fix' ? 'reinstalled' : 'removed') + ': ' + plugin);
+          setActions((previous) => ({ ...previous, [plugin]: {} }));
+          await refresh();
+        } catch (error) {
+          if (mounted.current) setActions((previous) => ({
+            ...previous, [plugin]: { phase: 'error', error: errorMessage(error, t('unknownError')) },
+          }));
+        } finally {
+          busyRef.current = false;
+          if (triggerRef.current && triggerRef.current.isConnected) triggerRef.current.focus();
+        }
+      };
 
       const data = state.data || {};
-      if (data.ok === false) return React.createElement('div', { style: quiet }, t('panelError') + data.error);
-      const versions = (data.matrix && data.matrix.dshVersions) || [];
-      const s = summary(data);
-
-      const runAction = (action, plugin) => {
-        setActionState((prev) => ({ ...prev, [plugin]: action + 'ing' }));
-        fetch(ROUTE + '/action', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ action, plugin }),
-        })
-          .then((r) => r.json())
-          .then((result) => {
-            setActionState((prev) => ({ ...prev, [plugin]: result.ok ? action + 'ed' : 'error' }));
-            if (result.ok) setTimeout(() => window.location.reload(), 1500);
-          })
-          .catch(() => setActionState((prev) => ({ ...prev, [plugin]: 'error' })));
+      const rows = Array.isArray(data.rows) ? data.rows : [];
+      const counts = rows.reduce((result, row) => {
+        result[healthBucket(row)] += 1;
+        return result;
+      }, { healthy: 0, attention: 0, unverified: 0 });
+      // Summary is supplemental: row evidence controls each visible classification.
+      const total = data.summary && Number.isFinite(data.summary.total)
+        ? data.summary.total : rows.length;
+      const issues = rows.filter((row) => healthBucket(row) === 'attention');
+      const versions = data.matrix && data.matrix.dshVersions || [];
+      const isProtected = (row) => row.firstParty || row.name.startsWith('@deepseek-ai/')
+        || row.name === '@shidesheng0218/dsh-plugin-lint-panel';
+      const anyBusy = Object.values(actions).some((action) => action.phase === 'working');
+      const actionButtons = (row) => {
+        if (isProtected(row)) return null;
+        const actionState = actions[row.name] || {};
+        const canReinstall = row.version && healthBucket(row) === 'attention';
+        return React.createElement('div', null,
+          React.createElement('div', { style: { display: 'flex', gap: '7px', flexWrap: 'wrap' } },
+            (canReinstall ? ['fix', 'isolate'] : ['isolate']).map((action) =>
+              React.createElement('button', {
+                key: action, type: 'button', disabled: anyBusy || state.refreshing,
+                style: buttonStyle,
+                'aria-label': t(action === 'fix' ? 'reinstall' : 'remove') + ' ' + row.name,
+                onClick: (event) => {
+                  triggerRef.current = event.currentTarget;
+                  setConfirmation({ action, plugin: row.name });
+                },
+              }, actionState.phase === 'working'
+                ? t(actionState.action === 'fix' ? 'reinstalling' : 'removing')
+                : t(action === 'fix' ? 'reinstall' : 'remove')))),
+          actionState.error ? React.createElement('p', {
+            role: 'alert', style: { ...quiet, color: T.error, margin: '7px 0 0' },
+          }, t('actionError') + actionState.error) : null);
       };
-
-      const actionButton = (action, plugin, label) => {
-        const state = actionState[plugin];
-        const busy = state === action + 'ing';
-        const done = state === action + 'ed';
-        return React.createElement('button', {
-          onClick: () => runAction(action, plugin),
-          disabled: busy || done,
-          style: {
-            padding: '3px 10px', borderRadius: '4px', border: '1px solid ' + T.tertiary,
-            background: done ? STATUS.active.color : 'transparent',
-            color: done ? '#fff' : T.text,
-            fontSize: '11px', cursor: busy || done ? 'default' : 'pointer',
-            opacity: busy ? 0.6 : 1,
-          },
-        }, busy ? t(action + 'ing') : done ? t(action + 'ed') : label);
+      const statusText = (row) => {
+        const state = row.health && row.health.state;
+        if (state === 'recorded-active') return t('recordedActive');
+        if (state === 'installed') return t('installed');
+        return t(healthBucket(row));
       };
+      const colorFor = (row) => healthBucket(row) === 'attention' ? T.error
+        : healthBucket(row) === 'healthy' ? T.success : T.secondary;
 
-      // Community plugins carry the matrix cells, so they come first; the bundles
-      // the DSH installation provides are grouped under a subdued subhead instead
-      // of filling the table with identical dashes.
-      const all = data.rows || [];
-      const community = all.filter((r) => !r.firstParty);
-      const firstParty = all.filter((r) => r.firstParty);
-      const ordered = [...community, ...firstParty];
-
-      const header = React.createElement('tr', null,
-        React.createElement('th', { style: { ...th, width: '100%' } }, 'Plugin'),
-        React.createElement('th', { style: th }, t('capabilities')),
-        versions.map((v) => React.createElement('th', { key: v, style: { ...th, fontFamily: T.mono, fontWeight: 500 } }, v)),
-        React.createElement('th', { style: th }, ''));
-
-      const subhead = firstParty.length > 0 && community.length > 0
-        ? React.createElement('tr', { key: '__firstparty' },
-            React.createElement('td', {
-              colSpan: versions.length + 3,
-              style: { padding: '14px 2px 6px', color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' },
-            }, 'Bundled with DSH'))
-        : null;
-
-      const CAPABILITY_LABEL = {
-        network: t('capNetwork'),
-        shell: t('capShell'),
-        'fs-read': t('capFsRead'),
-        'fs-write': t('capFsWrite'),
-        env: t('capEnv'),
-        'ui-injection': t('capUiInjection'),
-        llm: t('capLlm'),
-        'session-write': t('capSessionWrite'),
-        connection: t('capConnection'),
-        telemetry: t('capTelemetry'),
-      };
-
-      const rowOf = (row) => React.createElement('tr', { key: row.name },
-        React.createElement('td', { style: td },
-          React.createElement('div', { style: { color: T.text, fontFamily: T.mono, fontSize: '12.5px', letterSpacing: '-0.01em' } }, row.name),
-          React.createElement('div', { style: { color: T.tertiary, fontSize: '12px', marginTop: '1px' } },
-            (row.version || (row.providedBy === 'dsh-installation' ? 'bundled with DSH' : 'not installed'))
-            + (row.known || row.firstParty ? '' : ' · not in the matrix'))),
-        // The capability column: what the audit observed, as compact tags.
-        React.createElement('td', { style: { ...td, maxWidth: '180px' } },
-          row.audit && row.audit.observed && row.audit.observed.length > 0
-            ? React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: '3px' } },
-                row.audit.observed.slice(0, 4).map((o) => React.createElement('span', {
-                  key: o.capability,
-                  title: o.sites + ' site' + (o.sites === 1 ? '' : 's') + ', first: ' + o.first.file,
-                  style: {
-                    display: 'inline-block', padding: '0 5px', borderRadius: '3px',
-                    background: T.surface, color: T.secondary, fontSize: '10px', lineHeight: '16px',
-                    fontFamily: T.mono, whiteSpace: 'nowrap',
-                  },
-                }, CAPABILITY_LABEL[o.capability] || o.capability)),
-                row.audit.observed.length > 4
-                  ? React.createElement('span', { style: { color: T.tertiary, fontSize: '10px' } }, '+' + (row.audit.observed.length - 4))
-                  : null)
-            : React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } }, '—')),
-        versions.map((v) => {
-          const cells = cellsFor(row, v);
-          if (cells.length === 0) return React.createElement('td', { key: v, style: { ...td, textAlign: 'left' } }, none());
-          // The tool count lives in the headless cell; the web cell exercises the
-          // composition but never sends a model request. Read it from whichever
-          // composition recorded one.
-          const tools = Math.max(0, ...cells.map((c) => (c.toolsAdded || []).length));
-          const cell = bestCell(cells);
-          const title = [cell.status, cell.trust, cell.reproduce].filter(Boolean).join(' · ');
-          return React.createElement('td', { key: v, style: td },
-            pill(cell.status, title),
-            tools ? React.createElement('div', { style: { color: T.tertiary, fontSize: '11px', marginTop: '3px', fontFamily: T.mono } }, '+' + tools + ' tools') : null);
-        }),
-        // The action column: fix a refused plugin, or disable one that conflicts.
-        React.createElement('td', { style: { ...td, whiteSpace: 'nowrap' } },
-          row.cells && row.cells.some((c) => c.status === 'rejected-by-host')
-            ? actionButton('fix', row.name, t('fix'))
-            : null));
-
-      const bodyRows = [];
-      let subheadPlaced = false;
-      for (const row of ordered) {
-        if (subhead && !subheadPlaced && row.firstParty) {
-          bodyRows.push(subhead);
-          subheadPlaced = true;
-        }
-        bodyRows.push(rowOf(row));
-      }
-
-      // The ecosystem block uses only aggregate counts the host computed from the
-      // full matrix — never a package name — so it is safe to show even when the
-      // snapshot names packages elsewhere.
-      const ecosystem = (data.matrix && data.matrix.ecosystem) || null;
-      const ecoVersions = ecosystem ? Object.keys(ecosystem.versions || {}) : [];
-
-      return React.createElement('div', { style: { color: T.text, maxWidth: '880px' } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' } },
-          React.createElement('div', { style: { fontSize: '16px', fontWeight: 600, letterSpacing: '-0.01em' } }, t('title')),
-          React.createElement('div', { style: { color: T.tertiary, fontSize: '12px', fontFamily: T.mono } },
-            'DSH ' + ((data.dsh && data.dsh.version) || 'unknown'))),
-        React.createElement('div', { style: { color: T.secondary, fontSize: '13px', margin: '4px 0 16px' } },
-          t('matrixOf', { plugins: (data.matrix && data.matrix.plugins) || 0, date: formatDate(data.matrix && data.matrix.generatedAt) })
-          + ' · ' + t('installed', { total: s.total, known: s.known, atRisk: s.atRisk })
-          + (data.matrix && data.matrix.hasPerPluginData === false ? t('noPerPlugin') : '')),
-        // The panel's own update notice: a newer version is on npm. It names
-        // the two commands because the host has no plugin auto-update.
-        data.update
-          ? React.createElement('div', {
-              style: {
-                padding: '10px 14px', marginBottom: '12px', borderRadius: '6px',
-                border: '1px solid ' + T.hairline, background: T.surface,
-                fontSize: '13px', lineHeight: 1.5,
-              },
-            },
-            React.createElement('div', { style: { fontWeight: 600, color: T.text, marginBottom: '2px' } },
-              t('updateTitle', { latest: data.update.latest })),
-            React.createElement('div', { style: { color: T.secondary } },
-              t('updateBody', { current: data.update.current })))
-          : null,
-        // The upgrade banner: the running version is behind the matrix's newest,
-        // and at least one installed plugin would get a worse verdict there.
-        // It sits above the table because it is the one thing that changes what
-        // the user should do next.
-        data.upgrade && data.upgrade.worse > 0
-          ? React.createElement('div', {
-              style: {
-                padding: '10px 14px', marginBottom: '16px', borderRadius: '6px',
-                border: '1px solid var(--dsw-alias-state-warn-primary, #bf8700)',
-                background: 'var(--dsw-alias-bg-layer-1, rgba(191,135,0,.06))',
-                fontSize: '13px', lineHeight: 1.5,
-              },
-            },
-            React.createElement('div', { style: { fontWeight: 600, color: T.text, marginBottom: '2px' } },
-              t('upgradeTitle', { version: data.upgrade.latest })),
-            React.createElement('div', { style: { color: T.secondary } },
-              t('upgradeBody', { count: data.upgrade.worse, version: data.upgrade.latest, running: data.upgrade.running })))
-          : null,
-        data.profile && data.profile.error
-          ? React.createElement('div', { style: { ...quiet, padding: '0 0 8px' } }, data.profile.error)
-          : null,
-        React.createElement('table', { style: { borderCollapse: 'collapse', width: '100%' } },
-          React.createElement('thead', null, header),
-          React.createElement('tbody', null, bodyRows)),
-        ecosystem && ecoVersions.length > 0 ? React.createElement('div', { style: { marginTop: '28px' } },
-          React.createElement('div', { style: { color: T.tertiary, fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: '10px' } },
-            t('theMatrixSoFar')),
-          React.createElement('div', { style: { color: T.secondary, fontSize: '13px', marginBottom: '12px' } },
-            t('probedAcross', { plugins: (data.matrix.plugins || 0), versions: ecoVersions.length })),
-          ecoVersions.map((v) => {
-            const tally = ecosystem.versions[v] || {};
-            const total = Object.values(tally).reduce((a, b) => a + b, 0);
-            const active = tally['active'] || 0;
-            const rejected = tally['rejected-by-host'] || 0;
-            const waiting = tally['awaiting-service'] || 0;
-            const pct = total > 0 ? Math.round((active / total) * 100) : 0;
-            return React.createElement('div', { key: v, style: { marginBottom: '10px' } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: '8px', marginBottom: '4px' } },
-                React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, v),
-                React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } },
-                  active + ' ' + t('active') + ' · ' + rejected + ' ' + t('refused') + ' · ' + waiting + ' ' + t('awaiting') + ' · ' + pct + '% ' + t('mounted'))),
-              React.createElement('div', { style: { height: '3px', borderRadius: '999px', background: T.surface, overflow: 'hidden', display: 'flex' } },
-                React.createElement('div', { style: { width: (total > 0 ? (active / total) * 100 : 0) + '%', background: STATUS.active.color } }),
-                React.createElement('div', { style: { width: (total > 0 ? (waiting / total) * 100 : 0) + '%', background: STATUS['awaiting-service'].color } }),
-                React.createElement('div', { style: { width: (total > 0 ? (rejected / total) * 100 : 0) + '%', background: STATUS['rejected-by-host'].color } })));
-          })) : null,
-        // Slot conflicts: two plugins claiming the same slot cannot both mount.
-        // The panel names them and offers to disable one.
-        data.conflicts && data.conflicts.length > 0
-          ? React.createElement('div', { style: { marginTop: '24px', padding: '14px', borderRadius: '6px', border: '1px solid ' + T.hairline, background: T.surface } },
-              React.createElement('div', { style: { fontWeight: 600, fontSize: '13px', color: T.text, marginBottom: '6px' } }, t('conflictTitle')),
-              React.createElement('div', { style: { color: T.secondary, fontSize: '13px', marginBottom: '10px' } }, t('conflictBody', { count: data.conflicts.length })),
-              data.conflicts.map((c) => React.createElement('div', { key: c.slot, style: { display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px', flexWrap: 'wrap' } },
-                React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, c.slot),
-                c.plugins.map((p, i) => React.createElement(React.Fragment, { key: p },
-                  i > 0 ? React.createElement('span', { style: { color: T.tertiary, fontSize: '12px' } }, ' vs ') : null,
-                  React.createElement('span', { style: { fontFamily: T.mono, fontSize: '12px', color: T.text } }, p),
-                  actionButton('isolate', p, t('isolate')))))))
-          : null,
+      return React.createElement('div', {
+        style: { color: T.text, maxWidth: '880px', width: '100%', lineHeight: 1.5 },
+      },
+      React.createElement('header', null,
         React.createElement('div', {
-          style: { color: T.tertiary, fontSize: '12px', marginTop: '16px', paddingTop: '12px', borderTop: T.hairline, lineHeight: 1.6 },
-        }, t('footer')));
+          style: { display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' },
+        },
+          React.createElement('h2', { style: { fontSize: '22px', margin: 0, fontWeight: 600 } }, t('title')),
+          React.createElement('button', {
+            type: 'button', style: buttonStyle, disabled: state.refreshing || anyBusy,
+            onClick: refresh,
+          }, t('refresh'))),
+        React.createElement('p', { style: { ...quiet, maxWidth: '620px' } }, t('description')),
+        React.createElement('p', { style: { ...quiet, margin: '0 0 5px' } },
+          state.phase === 'loading' ? t('loading') : t('summary', counts)),
+        data.checkedAt ? React.createElement('p', {
+          style: { ...quiet, fontSize: '12px', margin: '0 0 18px' },
+        }, t('checked', { date: formatDate(data.checkedAt) })) : null),
+      state.error ? React.createElement('p', {
+        role: 'alert', style: { ...quiet, color: T.error },
+      }, t('error') + state.error) : null,
+      data.profile && data.profile.error ? React.createElement('p', {
+        role: 'alert', style: { ...quiet, color: T.error },
+      }, errorMessage(data.profile.error, t('unknownError'))) : null,
+      React.createElement('div', { role: 'status', 'aria-live': 'polite', style: quiet }, notice),
+      confirmation ? React.createElement('section', {
+        role: 'region', 'aria-labelledby': 'plugin-health-confirm-title',
+        onKeyDown: (event) => { if (event.key === 'Escape') dismissConfirmation(); },
+        style: { padding: '14px', margin: '16px 0', border: T.border, background: T.surface },
+      },
+        React.createElement('h3', { id: 'plugin-health-confirm-title', style: heading },
+          t(confirmation.action === 'fix' ? 'confirmReinstall' : 'confirmRemove')),
+        React.createElement('div', { style: { overflowWrap: 'anywhere' } }, confirmation.plugin),
+        React.createElement('p', { style: quiet },
+          t(confirmation.action === 'fix' ? 'confirmReinstallBody' : 'confirmRemoveBody')),
+        React.createElement('button', {
+          ref: confirmationRef, type: 'button', onClick: dismissConfirmation, style: buttonStyle,
+        }, t('cancel')),
+        React.createElement('button', {
+          type: 'button', onClick: runAction, style: { ...buttonStyle, marginLeft: '8px' },
+        }, t(confirmation.action === 'fix' ? 'confirmFix' : 'confirm'))) : null,
+      state.phase === 'ready' ? React.createElement(React.Fragment, null,
+        React.createElement('section', { style: { margin: '22px 0' } },
+          React.createElement('h3', { style: heading }, t('issues')),
+          issues.length ? issues.map((row) => React.createElement('div', {
+            key: row.name,
+            style: { borderLeft: '3px solid ' + T.error, padding: '9px 12px', marginBottom: '9px', background: T.surface },
+          },
+            React.createElement('strong', { style: { fontSize: '13px', overflowWrap: 'anywhere' } }, row.name),
+            React.createElement('p', { style: { ...quiet, margin: '4px 0' } }, healthReason(row, t)),
+            actionButtons(row))) : React.createElement('p', { style: quiet }, t('noIssues'))),
+        React.createElement('section', null,
+          React.createElement('h3', { style: heading }, t('plugins') + ' (' + total + ')'),
+          !rows.length ? React.createElement('p', { style: quiet }, t('noData')) : null,
+          rows.map((row) => React.createElement('article', {
+            key: row.name, style: { borderTop: T.border, padding: '13px 0' },
+          },
+            React.createElement('div', {
+              style: { display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' },
+            },
+              React.createElement('strong', { style: { fontSize: '13px', overflowWrap: 'anywhere' } }, row.name),
+              React.createElement('span', { style: { color: colorFor(row), fontSize: '12px' } }, statusText(row))),
+            React.createElement('div', { style: { ...quiet, fontSize: '12px' } },
+              row.version || (row.firstParty ? t('bundled') : t('notInstalled'))),
+            React.createElement('p', { style: { ...quiet, margin: '5px 0 9px' } }, healthReason(row, t)),
+            actionButtons(row)))),
+        React.createElement('details', { style: { marginTop: '24px', borderTop: T.border, paddingTop: '14px' } },
+          React.createElement('summary', { style: { cursor: 'pointer', fontSize: '14px', fontWeight: 600 } }, t('matrix')),
+          React.createElement('p', { style: quiet }, t('historical')),
+          data.upgrade && data.upgrade.worse > 0 ? React.createElement('div', null,
+            React.createElement('h4', { style: heading }, t('preview')),
+            React.createElement('p', { style: quiet }, t('previewBody', {
+              count: data.upgrade.worse, version: data.upgrade.latest, running: data.upgrade.running,
+            }))) : null,
+          versions.length ? React.createElement('div', { style: { overflowX: 'auto' } },
+            React.createElement('table', { style: { borderCollapse: 'collapse', width: '100%' } },
+              React.createElement('caption', { style: { ...quiet, textAlign: 'left' } }, t('matrix')),
+              React.createElement('thead', null,
+                React.createElement('tr', null, [t('plugin'), ...versions].map((value) =>
+                  React.createElement('th', { key: value, scope: 'col', style: tableCell }, value)))),
+              React.createElement('tbody', null, rows.map((row) =>
+                React.createElement('tr', { key: row.name },
+                  React.createElement('th', { scope: 'row', style: tableCell }, row.name),
+                  versions.map((version) => {
+                    const cells = (row.cells || []).filter((cell) => cell.dsh === version);
+                    return React.createElement('td', { key: version, style: tableCell },
+                      cells.length ? cells.map((cell, index) => React.createElement('div', { key: index },
+                        t(cell.status === 'active' ? 'probeActive'
+                          : cell.status === 'awaiting-service' ? 'probeWaiting' : 'probeFailure'),
+                        cell.composition ? ' (' + cell.composition + ')' : '')) : t('matrixUnavailable'));
+                  })))))) : null,
+          React.createElement('h4', { style: { ...heading, marginTop: '18px' } }, t('capabilities')),
+          rows.map((row) => React.createElement('p', { key: row.name, style: quiet },
+            row.name + ': ' + ((row.audit && row.audit.observed || []).map((item) => item.capability).join(', ')
+              || t('noCapabilities')))),
+          data.conflicts && data.conflicts.length ? React.createElement('section', null,
+            React.createElement('h4', { style: heading }, t('conflicts')),
+            React.createElement('p', { style: quiet }, t('conflictBody')),
+            data.conflicts.map((conflict) => React.createElement('p', { key: conflict.slot, style: quiet },
+              conflict.slot + ': ' + (conflict.plugins || []).join(', ')))) : null)) : null);
     }
 
-    const th = {
-      textAlign: 'left', padding: '0 12px 8px 2px', borderBottom: T.hairline,
-      color: T.tertiary, fontWeight: 500, fontSize: '11px', letterSpacing: '0.04em', whiteSpace: 'nowrap',
-    };
-    const td = { padding: '10px 12px 10px 2px', borderBottom: T.hairline, verticalAlign: 'top' };
-
     class Boundary extends React.Component {
-      constructor(props) { super(props); this.state = { error: undefined }; }
+      constructor(props) { super(props); this.state = {}; }
       static getDerivedStateFromError(error) { return { error }; }
       render() {
-        if (this.state.error) {
-          return React.createElement('div', { style: { color: T.text, fontSize: '13px', padding: '16px 0' } },
-            'The compatibility panel failed to render: ' + String(this.state.error && this.state.error.message || this.state.error));
-        }
-        return this.props.children;
+        return this.state.error ? React.createElement('div', { role: 'alert', style: quiet },
+          this.props.t('panelError') + errorMessage(this.state.error, this.props.t('unknownError')))
+          : this.props.children;
       }
     }
 
     function apply(ctx) {
-      // The locale service is optional: a profile without it still mounts, and
-      // the panel falls back to English.
-      const t = ctx.locale ? ctx.locale.bind(NS) : (key, vars) => {
-        const template = DICT.en[key] || key;
-        return template.replace(/\{(\w+)\}/g, (_, name) => String(vars?.[name] ?? ''));
-      };
-      if (ctx.locale) {
-        ctx.effect(() => ctx.locale.register(NS, DICT), NS + ': dictionaries');
-      }
+      const t = ctx.locale ? ctx.locale.bind(NS) : (key, vars) =>
+        (DICT.en[key] || key).replace(/\{(\w+)\}/g, (_, name) => String(vars && vars[name] != null ? vars[name] : ''));
+      if (ctx.locale) ctx.effect(() => ctx.locale.register(NS, DICT), NS + ': dictionaries');
       ctx.slots.inject('settings.section', () => ctx.slots.register({
-        name: 'settings.section',
-        id: 'plugin-lint',
-        order: 80,
-        label: () => t('title'),
-      }, () => React.createElement(Boundary, null, React.createElement(Panel, { t }))));
+        name: 'settings.section', id: 'plugin-lint', order: 80, label: () => t('title'),
+      }, () => React.createElement(Boundary, { t }, React.createElement(Panel, { t }))));
     }
-
     return { apply, inject: ['slots', 'locale'] };
   },
 });
