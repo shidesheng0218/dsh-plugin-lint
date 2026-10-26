@@ -1,3 +1,18 @@
+# Plugin Quality Gate — an example CI workflow for a DSH plugin repository.
+#
+# The gates use the CLI contracts as they are implemented:
+#   dsh-plugin-lint          --json / --sarif / --exit-code   (0 ok · 1 errors · 2 failed)
+#   dsh-plugin-analyze       performance|security|conflicts|full, --json / --exit-code
+#   dsh-plugin-upgrade-plan  --check-compatibility, --json    (0 compatible · 1 incompatible · 2 unknown)
+#
+# This is an example, not a shipped part of the npm package: copy it into
+# .github/workflows/ of a plugin repository and adjust the target DSH version.
+#
+# The analyze and upgrade-plan bins are part of the unreleased 0.3.0 line. npm's
+# current latest (0.1.0) only provides dsh-plugin-lint and the probe, so until
+# 0.3.0 is published install from a checkout of this repository instead of with
+# `npm install -g`, or the analyze/upgrade-plan steps will fail as unknown commands.
+
 name: Plugin Quality Gate
 
 on:
@@ -5,210 +20,170 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write   # upload-sarif
+  pull-requests: write     # summary comments, when enabled
+
 jobs:
-  comprehensive-analysis:
-    name: Comprehensive Plugin Analysis
+  static-analysis:
+    name: Static analysis
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Install dsh-plugin-lint
         run: npm install -g @shidesheng0218/dsh-plugin-lint
-      
-      # 1. Static conformance checks
+
+      # 1. Conformance lint. --exit-code turns error-level findings into exit 1.
       - name: Lint conformance
         run: |
           dsh-plugin-lint . --json > lint-report.json
           dsh-plugin-lint . --sarif > lint-report.sarif
-          
+          dsh-plugin-lint . --exit-code
+
       - name: Upload SARIF to GitHub Security
+        if: always()
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: lint-report.sarif
         continue-on-error: true
-      
-      # 2. Performance analysis with gates
-      - name: Performance analysis
+
+      # 2. Performance gate. With --json stdout is pure JSON, so .score is safe
+      #    to read; the report itself is kept as an artifact.
+      - name: Performance gate
         run: |
           dsh-plugin-analyze performance . --json > perf-report.json
-          
-          # Extract score
-          SCORE=$(jq '.score' perf-report.json)
+          SCORE=$(node -p "JSON.parse(require('fs').readFileSync('perf-report.json', 'utf8')).score")
           echo "Performance score: $SCORE/100"
-          
-          # Fail if score < 60
-          if (( $(echo "$SCORE < 60" | bc -l) )); then
-            echo "❌ Performance score too low: $SCORE"
-            echo "See perf-report.json for recommendations"
+          if [ "$SCORE" -lt 60 ]; then
+            echo "::error::performance score too low: $SCORE/100"
             exit 1
           fi
-          
-          echo "✅ Performance: $SCORE/100"
-      
-      # 3. Security deep analysis
-      - name: Security analysis
+
+      # 3. Security review. Findings are heuristics with file:line evidence; the
+      #    gate here fails on warnings. The CLI's own --exit-code gate fails on
+      #    any finding (including info-level inventory entries), which is stricter;
+      #    this example keeps the gate explicit for readability.
+      - name: Security review
         run: |
-          node -e "
-          import { analyzeSecurityDeep, loadPackage } from '@shidesheng0218/dsh-plugin-lint';
-          const pkg = loadPackage('.');
-          const result = analyzeSecurityDeep(pkg);
-          
-          console.log(\`Security risk: \${result.riskLevel}\`);
-          console.log(\`Findings: \${result.summary.error} error(s), \${result.summary.warn} warning(s)\`);
-          
-          // Fail on critical or high risk
-          if (result.riskLevel === 'critical' || result.riskLevel === 'high') {
-            console.error('❌ Security risk level too high');
-            process.exit(1);
-          }
-          
-          // Fail on error-level findings
-          if (result.summary.error > 0) {
-            console.error('❌ Critical security issues found');
-            for (const finding of result.findings.filter(f => f.level === 'error')) {
-              console.error(\`  [\${finding.rule}] \${finding.title}\`);
-              console.error(\`    \${finding.file}:\${finding.line}\`);
-            }
-            process.exit(1);
-          }
-          
-          console.log('✅ Security analysis passed');
-          " --input-type=module
-      
-      # 4. Check for conflicts with popular plugins
-      - name: Conflict detection
-        run: |
-          # Download popular plugins for conflict testing
-          mkdir -p /tmp/test-plugins
-          cd /tmp/test-plugins
-          
-          # Install a few popular plugins
-          npm init -y
-          npm install dsh-context dsh-whale-widget dsh-session --no-save || true
-          
-          cd $GITHUB_WORKSPACE
-          
-          # Check for conflicts
-          dsh-plugin-analyze conflicts . /tmp/test-plugins/node_modules/dsh-* || {
-            echo "⚠️  Conflicts detected with popular plugins"
-            echo "Review the conflict report above"
-            # Don't fail the build, just warn
-          }
-      
-      # 5. Generate comprehensive report
-      - name: Generate comprehensive report
+          dsh-plugin-analyze security . --json > security-report.json
+          WARN=$(node -p "JSON.parse(require('fs').readFileSync('security-report.json', 'utf8')).summary.warn")
+          echo "Security warnings: $WARN"
+          if [ "$WARN" -gt 0 ]; then
+            node -e '
+              const report = JSON.parse(require("fs").readFileSync("security-report.json", "utf8"));
+              for (const finding of report.findings) {
+                console.log("::warning file=" + finding.file + ",line=" + finding.line + "::[" + finding.rule + "] " + finding.message);
+              }
+            '
+            echo "::error::security review reported $WARN warning(s)"
+            exit 1
+          fi
+
+      # 4. One combined report: lint + performance + security. The report is always
+      #    generated for the artifact; the gates above already decide the job.
+      - name: Full analysis report
         if: always()
         run: |
-          node examples/comprehensive-analysis.mjs . --json > comprehensive-report.json
-          
-          echo "## Plugin Quality Report" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Extract key metrics
-          OVERALL=$(jq '.overallScore' comprehensive-report.json)
-          RATING=$(jq -r '.rating' comprehensive-report.json)
-          CONF=$(jq '.conformance.errors' comprehensive-report.json)
-          PERF=$(jq '.performance.score' comprehensive-report.json)
-          SEC=$(jq -r '.security.riskLevel' comprehensive-report.json)
-          
-          echo "**Overall Score:** $OVERALL/100 ($RATING)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Conformance errors: $CONF" >> $GITHUB_STEP_SUMMARY
-          echo "- Performance: $PERF/100" >> $GITHUB_STEP_SUMMARY
-          echo "- Security risk: $SEC" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          # Add recommendations
-          RECS=$(jq -r '.recommendations[]' comprehensive-report.json)
-          if [ ! -z "$RECS" ]; then
-            echo "### Recommendations" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            jq -r '.recommendations[] | "- " + .' comprehensive-report.json >> $GITHUB_STEP_SUMMARY
+          dsh-plugin-analyze full . --json > full-report.json || true
+          test -s full-report.json
+
+      # 5. Composition conflicts against a popular plugin, when it installs.
+      #    A static scan resolves literal names only; a high-risk clash gates.
+      - name: Conflict detection
+        run: |
+          mkdir -p /tmp/test-plugins
+          npm install --prefix /tmp/test-plugins dsh-context --no-save --no-package-lock || true
+          if [ -d /tmp/test-plugins/node_modules/dsh-context ]; then
+            dsh-plugin-analyze conflicts . /tmp/test-plugins/node_modules/dsh-context --json > conflicts-report.json
+            HIGH=$(node -p "JSON.parse(require('fs').readFileSync('conflicts-report.json', 'utf8')).summary.high")
+            echo "High-risk composition conflicts: $HIGH"
+            if [ "$HIGH" -gt 0 ]; then
+              echo "::error::high-risk composition conflict with dsh-context"
+              exit 1
+            fi
+          else
+            echo "::warning::dsh-context was not available; conflict detection skipped"
           fi
-      
-      # 6. Upload artifacts
+
+      # 6. Upload every report, including the ones from failed steps.
       - name: Upload reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: quality-reports
+          if-no-files-found: warn
           path: |
             lint-report.json
             lint-report.sarif
             perf-report.json
-            comprehensive-report.json
-      
-      # 7. Comment on PR
-      - name: Comment PR
-        if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-            const report = JSON.parse(fs.readFileSync('comprehensive-report.json', 'utf8'));
-            
-            const emoji = report.overallScore >= 90 ? '🟢' : 
-                         report.overallScore >= 75 ? '🟡' : '🔴';
-            
-            const body = `## ${emoji} Plugin Quality Report
-            
-            **Overall Score:** ${report.overallScore}/100 (${report.rating})
-            
-            | Metric | Score |
-            |--------|-------|
-            | Conformance | ${report.scores.conformance}/100 (${report.conformance.errors} error(s)) |
-            | Performance | ${report.performance.score}/100 |
-            | Security | ${report.scores.security}/100 (${report.security.riskLevel} risk) |
-            
-            ${report.recommendations.length > 0 ? `
-            ### 💡 Recommendations
-            ${report.recommendations.map(r => `- ${r}`).join('\n')}
-            ` : '✅ No major issues detected'}
-            `;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: body
-            });
+            security-report.json
+            full-report.json
+            conflicts-report.json
+
+      # 7. Write the summary to the job page (no API token needed).
+      - name: Job summary
+        if: always()
+        run: |
+          {
+            echo "## Plugin quality report"
+            echo ""
+            if [ -s lint-report.json ]; then
+              echo "| Conformance | |"
+              echo "|---|---|"
+              echo "| errors | $(jq -r '.summary.error' lint-report.json) |"
+              echo "| warnings | $(jq -r '.summary.warn' lint-report.json) |"
+            fi
+            if [ -s perf-report.json ]; then
+              echo "| Performance | $(jq -r '.score' perf-report.json)/100 ($(jq -r '.rating' perf-report.json)) |"
+            fi
+            if [ -s security-report.json ]; then
+              echo "| Security risk | $(jq -r '.riskLevel' security-report.json) ($(jq -r '.summary.warn' security-report.json) warning(s)) |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
   compatibility-check:
-    name: DSH Version Compatibility
+    name: DSH compatibility declaration
     runs-on: ubuntu-latest
-    
+
     steps:
       - uses: actions/checkout@v4
-      
+
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      
+
       - name: Install dsh-plugin-lint
         run: npm install -g @shidesheng0218/dsh-plugin-lint
-      
-      - name: Check compatibility declarations
+
+      # The check reads the plugin's own dsh.compatibility.dshReleases; it needs
+      # no matrix data. Exit codes: 0 compatible · 1 incompatible · 2 unknown.
+      - name: Check the declared compatibility
         run: |
-          # Check if plugin declares compatibility
-          dsh-plugin-upgrade-plan \
-            --check-compatibility . \
-            --target 0.2.0-rc.2
-          
-          # Verify compatibility is declared in manifest
-          if ! jq -e '.dsh.compatibility.dshReleases' package.json > /dev/null; then
-            echo "⚠️  Warning: No DSH compatibility declared in package.json"
-            echo ""
-            echo "Add to package.json:"
-            echo '  "dsh": {'
-            echo '    "compatibility": {'
-            echo '      "dshReleases": {'
-            echo '        "0.2.0-rc.2": "compatible"'
-            echo '      }'
-            echo '    }'
-            echo '  }'
+          TARGET=0.2.1-alpha.2
+          set +e
+          dsh-plugin-upgrade-plan --check-compatibility . --target "$TARGET" --json > compatibility-report.json
+          STATUS=$?
+          set -e
+          cat compatibility-report.json
+          if [ "$STATUS" -eq 1 ]; then
+            echo "::error::the plugin declares incompatibility with DSH $TARGET"
+            exit 1
           fi
+          if [ "$STATUS" -eq 2 ]; then
+            echo "::warning::no compatibility declaration for DSH $TARGET"
+            echo 'Declare it in package.json: "dsh": { "compatibility": { "dshReleases": { "'"$TARGET"'": "compatible" } } }'
+          fi
+
+      # Optional: plan an upgrade for a real profile against a local matrix
+      # snapshot. The npm package does not ship matrix data, so this needs a
+      # checkout of dsh-plugin-lint (or a --matrix directory of generated cells):
+      #
+      #   dsh-plugin-upgrade-plan --from 0.2.0-rc.2 --to 0.2.1-alpha.2 \
+      #     --installed ~/.dsh/profiles/desktop --matrix ./matrix/cells --json
