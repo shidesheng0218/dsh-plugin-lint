@@ -55,6 +55,23 @@ const withProfile = (dir, fn) => {
   }
 };
 
+/**
+ * Tests that call payload() without a fixture profile must not inherit the
+ * ambient DSH shell environment: a developer running `npm test` from inside a
+ * Harness session would otherwise read that real profile's bundles.
+ */
+const withNoProfile = (fn) => {
+  const keys = ['DSH_PROFILE_DIR', 'DSH_PROFILE', 'DSH_HOME'];
+  const saved = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+  for (const key of keys) delete process.env[key];
+  try { return fn(); } finally {
+    for (const key of keys) {
+      if (saved[key] === undefined) delete process.env[key];
+      else process.env[key] = saved[key];
+    }
+  }
+};
+
 test('the panel reports the installed version of every selected bundle', () => {
   const dir = profile([{ name: 'covered-plugin', version: '9.9.9' }, { name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
   withProfile(dir, () => {
@@ -93,16 +110,12 @@ test('the panel marks a bundle the matrix does not cover', () => {
 });
 
 test('the panel explains itself when the profile cannot be read', () => {
-  const before = process.env.DSH_PROFILE_DIR;
-  delete process.env.DSH_PROFILE_DIR;
-  try {
+  withNoProfile(() => {
     const data = panel.payload();
     assert.equal(data.ok, true, 'a missing profile is not an error');
     assert.match(data.profile.error, /DSH_PROFILE_DIR/);
     assert.deepEqual(data.rows, []);
-  } finally {
-    if (before !== undefined) process.env.DSH_PROFILE_DIR = before;
-  }
+  });
 });
 
 test('the panel survives a bundle list holding something that is not a name', () => {
@@ -121,12 +134,14 @@ test('a missing snapshot leaves every plugin uncovered instead of failing', () =
   const saved = process.env.DSH_PLUGIN_LINT_INDEX;
   process.env.DSH_PLUGIN_LINT_INDEX = join(indexDir, 'does-not-exist.json');
   try {
-    const data = panel.payload();
-    assert.equal(data.ok, true);
-    // The aggregate that ships in the package still provides the ecosystem
-    // counts, so plugins is not 0 — but per-plugin rows are not available.
-    assert.equal(data.matrix.hasPerPluginData, false);
-    assert.deepEqual(data.rows, []);
+    withNoProfile(() => {
+      const data = panel.payload();
+      assert.equal(data.ok, true);
+      // The aggregate that ships in the package still provides the ecosystem
+      // counts, so plugins is not 0 — but per-plugin rows are not available.
+      assert.equal(data.matrix.hasPerPluginData, false);
+      assert.deepEqual(data.rows, []);
+    });
   } finally {
     process.env.DSH_PLUGIN_LINT_INDEX = saved;
   }
@@ -188,16 +203,25 @@ test('the running profile comes from the launcher arguments, not a constant', ()
 });
 
 test('a fix adds the exact installed version in the running profile', () => {
-  const plan = panel.actionCommand('fix', 'some-plugin', {
-    version: '1.2.3', argv: ['node', '/cli.js', '--profile', 'web'], cli: '/cli.js', electron: false, execPath: '/node',
-  });
-  assert.equal(plan.profile, 'web');
-  assert.equal(plan.steps.length, 1);
-  assert.equal(plan.steps[0].includes('add'), true);
-  assert.equal(plan.steps[0].at(-1), 'some-plugin@1.2.3');
-  assert.equal(plan.steps[0].includes('web'), true, 'the add targets the running profile');
-  assert.equal(plan.steps[0].includes('--expose-internals'), false, 'plain node needs no Electron flags');
-  assert.equal(plan.env.ELECTRON_RUN_AS_NODE, undefined);
+  // A DSH shell exports ELECTRON_RUN_AS_NODE=1. The plain-node branch must drop
+  // it instead of handing it to the child process.
+  const before = process.env.ELECTRON_RUN_AS_NODE;
+  process.env.ELECTRON_RUN_AS_NODE = '1';
+  try {
+    const plan = panel.actionCommand('fix', 'some-plugin', {
+      version: '1.2.3', argv: ['node', '/cli.js', '--profile', 'web'], cli: '/cli.js', electron: false, execPath: '/node',
+    });
+    assert.equal(plan.profile, 'web');
+    assert.equal(plan.steps.length, 1);
+    assert.equal(plan.steps[0].includes('add'), true);
+    assert.equal(plan.steps[0].at(-1), 'some-plugin@1.2.3');
+    assert.equal(plan.steps[0].includes('web'), true, 'the add targets the running profile');
+    assert.equal(plan.steps[0].includes('--expose-internals'), false, 'plain node needs no Electron flags');
+    assert.equal(plan.env.ELECTRON_RUN_AS_NODE, undefined);
+  } finally {
+    if (before === undefined) delete process.env.ELECTRON_RUN_AS_NODE;
+    else process.env.ELECTRON_RUN_AS_NODE = before;
+  }
 });
 
 test('an isolate is a single remove, and Electron runs the CLI as node', () => {

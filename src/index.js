@@ -5,9 +5,11 @@ export { RULES, EVENT_TYPES, DOC };
 export { maskSource } from './mask.js';
 export { loadPackage, filesCover } from './load.js';
 export { formatText, toSarif, toBadge } from './report.js';
+// Experimental analysis modules: static heuristics, not runtime measurements or
+// security verdicts. Each returns `experimental: true` together with its limits.
 export { detectConflicts } from './composition.js';
 export { analyzePerformance } from './performance.js';
-export { analyzeSecurityDeep, SECURITY_RULES } from './security.js';
+export { analyzeSecurityDeep, SECURITY_RULES, SECURITY_LIMITS } from './security.js';
 
 const LEVEL_ORDER = { error: 0, warn: 1, info: 2 };
 

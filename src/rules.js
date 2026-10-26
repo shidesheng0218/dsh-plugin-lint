@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendCallSites, blockAfter, braceDepthAt, lineOfIndex, stringAfter } from './mask.js';
-import { filesCover } from './load.js';
+import { filesCover, exportTarget } from './load.js';
 
 const CATALOG = JSON.parse(readFileSync(new URL('./data/event-types.json', import.meta.url), 'utf8'));
 export const EVENT_TYPES = new Set(CATALOG.types);
@@ -116,7 +116,11 @@ export const RULES = [
     check(ctx, options, push) {
       const hasClientSection = Boolean(ctx.manifest.dsh && ctx.manifest.dsh.client);
       if (!hasClientSection) return;
-      if (ctx.entries.client !== undefined && ctx.exists(ctx.entries.client)) return;
+      // entries.client falls back to client.js so the analysis has a file to read;
+      // the platform itself resolves the browser artifact only through the
+      // ./client export, so a present client.js without that export is still a bug.
+      const declared = exportTarget(ctx.manifest.exports || {}, './client');
+      if (declared !== undefined && ctx.exists(String(declared).replace(/^\.\//, ''))) return;
       push({
         file: 'package.json',
         line: manifestLine(ctx.manifestText, 'dsh.client'),
