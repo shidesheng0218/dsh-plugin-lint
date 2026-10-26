@@ -1,372 +1,268 @@
-# New Features - Extended Analysis
+# 19 · 分析工具（experimental）
 
-This document describes the new P0 features added to dsh-plugin-lint to make it more useful and necessary for the DSH plugin ecosystem.
+## 0. 状态与范围
 
-## Overview
+v0.3.0 新增四项分析能力：组合冲突检测、性能分析、安全深析、升级路径。四项都标记为 **experimental**：
 
-The project has been extended with three major capabilities:
+- 全部是对磁盘文件的**静态启发式检查**——不执行插件、不做运行时测量、不做安全裁决；
+- `analyze` 的结果对象带 `experimental: true` 与 `limits` 数组（`full` 的 `limits` 在 performance/security 子报告里），报告自己说明边界；`upgrade-plan` 的 JSON 不带这两个字段；
+- 干净运行只代表没有模式命中，不代表插件安全、快速或可组合。
 
-1. **Composition Conflict Detection** - Find collisions when multiple plugins compete for resources
-2. **Performance Analysis** - Identify performance bottlenecks and heavy patterns
-3. **Security Deep Analysis** - Detect security risks beyond capability disclosure
+**发布状态：** 工作区版本 `@shidesheng0218/dsh-plugin-lint` 0.3.0，未发布；npm 最新发布是 0.1.0（2026-10-14），其中只有 `dsh-plugin-lint` 与 `dsh-plugin-probe` 两个 bin，没有本文的 `dsh-plugin-analyze` / `dsh-plugin-upgrade-plan`。因此本文的命令都要**从源码 checkout 运行**（`node bin/...`），不能通过 `npx` 获得。
 
-## 1. Composition Conflict Detection
+代码位置：`src/composition.js`、`src/performance.js`、`src/security.js`、`bin/dsh-plugin-analyze.mjs`、`bin/dsh-plugin-upgrade-plan.mjs`；导出在 `src/index.js`。
 
-### What it does
+## 1. CLI 契约
 
-Detects conflicts across multiple installed plugins that compete for the same resources:
+### 1.1 `dsh-plugin-analyze`
 
-- **UI Slot Collisions**: Multiple plugins trying to render in the same slot
-- **Tool Name Duplicates**: Different plugins registering tools with the same name
-- **Route Conflicts**: Multiple plugins claiming the same HTTP route
-- **Config Key Overwrites**: Plugins fighting for the same configuration keys
-- **Waterfall Listener Issues**: Plugins that don't properly return `next()` in event chains
+| 子命令 | 参数 | 作用 |
+| --- | --- | --- |
+| `conflicts <dir> <dir> [dir...]` | 至少两个插件目录 | 扫多个插件的静态资源声明，报告同名冲突 |
+| `performance <dir>` | 恰好一个插件目录 | 静态体积/复杂度/网络指标与 0–100 启发式评分 |
+| `security <dir>` | 恰好一个插件目录 | S1–S10 静态安全模式，全部 warn/info |
+| `full <dir>` | 恰好一个插件目录 | `lintPackage` + `analyzePerformance` + `analyzeSecurityDeep` |
 
-### Usage
+通用选项：
 
-```bash
-# Check conflicts between plugins
-dsh-plugin-analyze conflicts ./plugin-a ./plugin-b ./plugin-c
+| 选项 | 行为 |
+| --- | --- |
+| `--json` | stdout 只输出 JSON；诊断/进度写 stderr |
+| `--exit-code` | 启用门禁退出码（见下表）；不加时成功运行一律 0 |
+| `-h`, `--help` | 输出 usage 到 stdout，退出 0 |
 
-# Example output:
-# 🔍 Analyzing 3 plugin(s) for composition conflicts...
-#
-# ======================================================================
-# COMPOSITION CONFLICT REPORT
-# ======================================================================
-#
-# Summary: 2 conflict(s) found
-#   🔴 High risk:   1
-#   🟡 Medium risk: 1
-#
-# ──────────────────────────────────────────────────────────────────────
-# UI SLOT COLLISIONS (1)
-# ──────────────────────────────────────────────────────────────────────
-#
-# 🔴 Slot: ui.slot.sidebar
-#   Plugins: plugin-a, plugin-b
-#   Risk: high
-#   Resolution: Consider disabling one of: plugin-a, plugin-b
-```
+退出码：
 
-### Why it matters
+| 码 | 含义 |
+| --- | --- |
+| 0 | 分析完成；或 `--exit-code` 门禁未触发 |
+| 1 | 带 `--exit-code` 且门禁触发：`conflicts` 有冲突；`security` 有 warn/error 级 finding；`full` 的 lint 有 error 或 security 有 warn/error 级 finding。`performance` 与 info 级 finding 永不触发 |
+| 2 | 用法错误、目录不存在、目录里没有 `package.json`、或分析过程失败 |
 
-This fills a **confirmed ecosystem gap**. From the research:
-- 786 UI plugins competing for limited slots
-- No existing tool detects these conflicts
-- Users don't know why their plugins "disappear" or override each other
+`full` 不包含冲突检测：单包没有可比较对象。`--json` 的顶层形状：
 
-### API
-
-```javascript
-import { detectConflicts, loadPackage } from '@shidesheng0218/dsh-plugin-lint';
-
-const packages = [
-  loadPackage('./plugin-a'),
-  loadPackage('./plugin-b')
-].map(pkg => ({
-  name: pkg.manifest.name,
-  manifest: pkg.manifest,
-  jsFiles: pkg.jsFiles
-}));
-
-const conflicts = detectConflicts(packages);
-console.log(`Found ${conflicts.summary.total} conflicts`);
-console.log(`High risk: ${conflicts.summary.high}`);
-```
-
-## 2. Performance Analysis
-
-### What it does
-
-Provides actionable performance metrics:
-
-- **Bundle Size**: Total shipped bytes, JS size, largest files
-- **Code Complexity**: Lines, functions, nesting depth, maintainability rating
-- **DOM Impact**: Mutations, direct body access, heavy selectors (client plugins)
-- **Network Activity**: External calls, domains contacted
-- **Performance Score**: 0-100 rating with recommendations
-
-### Usage
+| 子命令 | JSON 顶层字段 |
+| --- | --- |
+| conflicts | `targets[]`、`slots`、`toolNames`、`routes`、`configKeys`、`eventListeners`、`summary`、`experimental: true`、`limits[]` |
+| performance | `target`、`bundleSize`、`complexity`、`domImpact`、`networkCalls`、`heavyDependencies`、`score`、`rating`、`recommendations`、`experimental: true`、`limits[]` |
+| security | `target`、`findings`、`byCategory`、`summary`、`riskLevel`、`experimental: true`、`limits[]` |
+| full | `target`、`lint`、`performance`、`security`、`experimental: true` |
 
 ```bash
-# Analyze single plugin
-dsh-plugin-analyze performance ./my-plugin
-
-# Example output:
-# ⚡ Analyzing performance: ./my-plugin
-#
-# ======================================================================
-# PERFORMANCE REPORT: my-awesome-plugin
-# ======================================================================
-#
-# 🟡 Overall Score: 72/100 (good)
-#
-# ──────────────────────────────────────────────────────────────────────
-# BUNDLE SIZE
-# ──────────────────────────────────────────────────────────────────────
-#   Total: 2.3 MB (45 files)
-#   JavaScript: 1.8 MB
-#
-#   Largest files:
-#     - dist/bundle.js: 1200 KB
-#     - vendor/lib.js: 450 KB
-#
-# ──────────────────────────────────────────────────────────────────────
-# RECOMMENDATIONS
-# ──────────────────────────────────────────────────────────────────────
-#
-#   🔴 Large bundle size
-#      → Consider code splitting or removing unused dependencies
-#      Impact: high
+node bin/dsh-plugin-analyze.mjs conflicts ./plugin-a ./plugin-b
+node bin/dsh-plugin-analyze.mjs performance ./my-plugin --json
+node bin/dsh-plugin-analyze.mjs security ./my-plugin --exit-code
+node bin/dsh-plugin-analyze.mjs full ./my-plugin --json
 ```
 
-### Why it matters
+### 1.2 `dsh-plugin-upgrade-plan`
 
-**Differentiation from existing tools**:
-- `dsh-plugin-doctor`: checks package structure
-- `dsh-testkit`: tests install/uninstall lifecycle
-- **dsh-plugin-lint performance**: analyzes runtime impact
-
-Users can now answer: "Why is my DSH slow after installing this plugin?"
-
-### API
-
-```javascript
-import { analyzePerformance, loadPackage } from '@shidesheng0218/dsh-plugin-lint';
-
-const pkg = loadPackage('./my-plugin');
-const metrics = analyzePerformance(pkg);
-
-console.log(`Bundle: ${metrics.bundleSize.totalMB} MB`);
-console.log(`Score: ${metrics.score}/100 (${metrics.rating})`);
-console.log(`Recommendations: ${metrics.recommendations.length}`);
-```
-
-## 3. Security Deep Analysis
-
-### What it does
-
-Goes beyond capability disclosure to analyze **how** capabilities are used:
-
-- **Data Exfiltration**: Session/credential data sent to external domains
-- **Credential Handling**: Storing tokens in localStorage
-- **Code Injection**: eval(), Function(), innerHTML without sanitization
-- **Command Injection**: Shell commands built with string interpolation
-- **Network Integrity**: Undeclared domains, insecure HTTP
-- **File System Access**: Operations outside workspace
-
-### Usage
+两种模式，都要显式选择：
 
 ```bash
-dsh-plugin-analyze security ./plugin
+# 分析模式：读 profile 已装 bundle，与本地矩阵对照
+node bin/dsh-plugin-upgrade-plan.mjs --from <版本> --to <版本> --installed <profile 目录> [--matrix <矩阵目录>] [--json]
+
+# 兼容检查模式：只读单个插件自己的 dsh.compatibility 声明
+node bin/dsh-plugin-upgrade-plan.mjs --check-compatibility <插件目录> --target <版本> [--json]
 ```
 
-Findings are heuristic and capped at warning level: an error level is reserved for rules that are mechanically decidable, and these patterns are not. Each finding names the file, the line and the evidence; the report is an aid to review, not a verdict.
+| 选项 | 行为 |
+| --- | --- |
+| `--matrix <dir>` | 矩阵 cell 目录，默认 `./matrix/cells`；目录不存在或没有 cell 时退出 2 |
+| `--json` | stdout 只输出 JSON |
+| `--auto-fix` | 人类可读输出额外打印 `npm install <pkg>@<version> ...` 建议；不执行安装 |
+| `-h`, `--help` | 输出 usage，退出 0 |
+| 未知选项 / 参数缺值 | 退出 2 |
 
-The same analysis is available as a library call:
+分析模式退出码：`0` 无需动作 · `1` 至少一个社区插件需要更新（`needsUpdate`）或没有兼容的已测版本（`noCompatibleVersion`）· `2` 运行失败（参数错误、profile 不存在、矩阵目录不存在、矩阵里没有目标 DSH 版本的 cell）。
+
+`--check-compatibility` 退出码：`0` 声明兼容 · `1` 声明不兼容 · `2` 未知（没声明 `dsh.compatibility.dshReleases`，或没声明目标版本）。
+
+分析模式不访问网络：它只读 profile 的 `package.json`（`dsh.profile.bundles`，缺失时回退扫描 `node_modules`）与本地矩阵 cell。
+
+## 2. 组合冲突（`conflicts`）
+
+### 2.1 扫什么
+
+只解析字面量注册点：
+
+| 资源 | 识别的写法（示例） |
+| --- | --- |
+| UI slot | `ctx.slots.inject('<slot>', ...)`、`ctx.slots.register({ name: '<slot>' }, ...)`；兼容旧写法 `slot: '<name>'` 与 `ctx.provide('ui.slot.<name>')` |
+| 工具名 | `ctx.tools.register(defineTool({ name: '<name>' }))`、`ctx.tools.register({ name: '<name>' })`、声明式 `tools: [{ name: '<name>' }]` |
+| 路由 | `connection.fetch.register({ path: '/api/...' })`；兼容 `ctx.router.get` / `post` / `put` / `delete` / `patch` |
+| 配置键 | `ctx.config.set('<key>', ...)` |
+| waterfall 监听器 | 常见 waterfall 事件上多个监听器，且存在不返回/不调用 `next()` 的写法 |
+
+同一插件重复声明同名资源不会被算作冲突；只有两个不同插件认领同一资源才进入报告。`summary` 给出 total/high/medium/low。
+
+### 2.2 边界
+
+```text
+Static scan of literal call sites: dynamic resource names are not resolved.
+The runtime matrix conflict check (scripts/matrix/conflicts.mjs) is the authority; this module is a pre-flight hint.
+A missing conflict is not proof that two plugins compose.
 ```
+
+**运行时权威是 `scripts/matrix/conflicts.mjs`**：它把插件真正装进同一个 profile，读宿主实际注册了什么（工具名、slot 名），并用两个故意撞名的夹具验证过。本文的 CLI 是安装前预检，命中要重视，漏报不能当成"可以共存"。
+
+## 3. 性能分析（`performance`）
+
+### 3.1 指标
+
+| 字段 | 含义 |
+| --- | --- |
+| `bundleSize` | 按 npm 打包语义估算的发售体积：总字节/MB、JS 字节/MB、文件数、最大文件列表 |
+| `complexity` | 行数、函数数、深嵌套文件数、maintainability 评级 |
+| `domImpact` | 客户端 DOM 操作模式的风险等级（只分析客户端入口文件） |
+| `networkCalls` | 字面量 `fetch`/`axios` 调用数、外部域名列表、风险等级 |
+| `heavyDependencies` | 同步文件系统调用、循环内 JSON 等重模式 |
+| `score` / `rating` | 0–100 启发式评分与档位（excellent/good/fair/poor；没有可分析 JS 时为 0/insufficient-data） |
+| `recommendations[]` | 由指标生成的改进建议 |
+
+评分从 100 起按固定阈值扣分（bundle 体积 >1/>2/>5 MB、maintainability fair/poor、DOM/网络风险、每条重模式 -5）。阈值写在代码里，没有运行时权重。
+
+若包里没有任何可分析的 JS，`score = 0`、`rating = 'insufficient-data'`：没有可判断的对象时不给满分。长函数指**超过 100 行**；注释不参与计数（读 mask 后源码）。
+
+### 3.2 边界
+
+```text
+Static analysis of the files on disk: no startup time, memory, or runtime measurement is performed.
+Bundle size approximates npm packing but does not resolve every npm files[] rule.
+The 0-100 score is a heuristic summary; a high score is not proof of a fast plugin.
+```
+
+它回答的是"包里有什么静态指标"，不是"装上后 DSH 会不会变慢"。评分适合做同一插件不同版本间的相对比较，不适合当作性能验收线。
+
+## 4. 安全深析（`security`）
+
+### 4.1 规则
+
+10 条规则，**没有 error 级**（全部 warn/info）：
+
+| 规则 | 级别 | 类别 | 检测 |
+| --- | --- | --- | --- |
+| S1 | warn | data-exfiltration | 会话/agent 数据发往外部域名 |
+| S2 | warn | credential-handling | 凭据写入 localStorage/sessionStorage |
+| S3 | warn | code-injection | `eval()` / `Function()` |
+| S4 | warn | xss | 客户端入口把非静态字符串赋给 `innerHTML` |
+| S5 | info | network-integrity | 代码里的字面量外部域名清单（inventory，不是声明比对） |
+| S6 | warn | command-injection | 字符串插值拼 shell 命令 |
+| S7 | warn | fs-access | 工作区外绝对路径文件操作 |
+| S8 | info | crypto-usage | 使用 crypto 函数 |
+| S9 | warn | environment-access | 读取 `process.env` |
+| S10 | warn | transport-security | 生产代码使用明文 HTTP |
+
+几条实现口径值得写清楚：
+
+- 规则读 **mask 后源码**：注释被清空，所以注释里的 URL、`eval` 不会误报；字符串字面量保留，因为 URL/存储键本身就是证据。
+- **S4 只报非静态值**：静态字符串、无插值的模板字符串、经 `DOMPurify` / `sanitize` / `escapeHtml` 处理的不报；带模板插值的 `innerHTML` 赋值会报。只检查 `entries.client` 指向的客户端入口文件。
+- **S5 是清单不是判定**：DSH manifest 没有 `dsh.capabilities` 字段，规则无法做"声明 vs 实践"比对，只列出代码里出现的字面量外部域名，单包最多 10 个。
+- `riskLevel` 只由 warn 数量决定：0 = minimal、1–3 = low、4–9 = medium、≥10 = high；**没有 critical**，且它是对警告数量的概括，不是裁决。
 
 ```javascript
-import { analyzeSecurityDeep, loadPackage } from '@shidesheng0218/dsh-plugin-lint';
-
-const pkg = loadPackage('./plugin');
 const result = analyzeSecurityDeep(pkg);
-
-console.log(`Risk level: ${result.riskLevel}`);
-console.log(`Findings: ${result.summary.total}`);
-console.log(`  Errors: ${result.summary.error}`);
-console.log(`  Warnings: ${result.summary.warn}`);
-
-// By category
-for (const [category, findings] of Object.entries(result.byCategory)) {
-  console.log(`\n${category}: ${findings.length} issue(s)`);
-  for (const finding of findings) {
-    console.log(`  [${finding.level}] ${finding.message}`);
-    console.log(`    ${finding.file}:${finding.line}`);
-    console.log(`    Hint: ${finding.hint}`);
-  }
-}
+// {
+//   experimental: true,
+//   findings: [{ rule, level, title, category, file, line, message, evidence, hint, experimental }],
+//   byCategory: { ... },
+//   summary: { total, error: 0, warn, info },
+//   riskLevel: 'minimal' | 'low' | 'medium' | 'high',
+//   limits: [ ... ]
+// }
 ```
 
-### Why it matters
+### 4.2 边界
 
-**Complements dsh-trust-check**:
-- `dsh-trust-check`: "This plugin CAN access network" (capability disclosure)
-- **Security deep analysis**: "This plugin SENDS session data to analytics.example.com" (behavior audit)
-
-From research: 1,620 plugins declare shell access, 486 declare credential access. **None are audited for how they use these capabilities.**
-
-### Security Rules
-
-| Rule | Level | Detects |
-|------|-------|---------|
-| S1 | error | Session data sent to external domains |
-| S2 | error | Credentials in localStorage/sessionStorage |
-| S3 | warn | eval() or Function() constructor |
-| S4 | error | innerHTML without sanitization |
-| S5 | warn | Network requests to undeclared domains |
-| S6 | error | Shell command injection risks |
-| S7 | warn | File system operations outside workspace |
-| S8 | info | Cryptographic function usage |
-| S9 | warn | Excessive process.env access |
-| S10 | error | Insecure HTTP in production |
-
-## 4. Upgrade Path Generator
-
-### What it does
-
-Helps users plan DSH version upgrades by checking plugin compatibility:
-
-```bash
-# Check upgrade impact
-dsh-plugin-upgrade-plan --from 0.2.0-rc.2 --to 0.3.0 --installed ~/.dsh/profiles/default
-
-# Check single plugin
-dsh-plugin-upgrade-plan --check-compatibility ./my-plugin --target 0.3.0
+```text
+Experimental static heuristics over source text: a finding describes a pattern, not observed behaviour, and is not a security verdict.
+Rules read the masked source: comments are blanked; string literals stay intact where a URL or storage key is itself the evidence.
+No rule in this module is error-level, and a clean run does not mean the plugin is safe.
 ```
 
-### Example output
+这是给 reviewer 的线索清单，不是安全扫描结论；与 `dsh-trust-check`（能力披露）是互补关系，不能互相替代。
 
-```
-📊 DSH Upgrade Impact Analysis
-   0.2.0-rc.2 → 0.3.0
+## 5. 升级路径（`dsh-plugin-upgrade-plan`）
 
-Found 15 DSH plugin(s) in ~/.dsh/profiles/default
+### 5.1 分析模式
 
-======================================================================
-UPGRADE COMPATIBILITY REPORT
-======================================================================
+读 profile 已装 bundle，与本地矩阵 join，按目标 DSH 版本把每个插件归入：
 
-✅ 10 plugin(s) already compatible:
-   - plugin-a@1.0.0
-   - plugin-b@2.1.0
-   ...
+| 分类 | 含义 |
+| --- | --- |
+| `compatible` | 矩阵在目标版本上是 `active` |
+| `untested` | 矩阵记录 `awaiting-service`：该组合没提供它等待的服务，不算失败 |
+| `needsUpdate` | 目标版本上不是 active，但矩阵里有另一个 active 的已测版本 → 建议版本 |
+| `noCompatibleVersion` | 矩阵测过的版本没有一个在目标版本上 active |
+| `unknown` | 矩阵没有覆盖该插件/版本，或没有目标版本的 cell |
+| `firstParty` | 官方 `@deepseek-ai/*` bundle，矩阵不覆盖，单独列出 |
 
-⚠️  3 plugin(s) need update:
-   - old-plugin: 1.0.0 → 1.2.0
-   - legacy-tool: 0.5.0 → 0.8.0
-   ...
+`summary.needAction = needsUpdate + noCompatibleVersion`，决定退出码 0/1。官方 bundle 只计数、不预览。矩阵没覆盖的插件报 unknown，不当作裁决。
 
-🔧 Auto-fix command:
-   npm install old-plugin@1.2.0 legacy-tool@0.8.0
+### 5.2 边界
 
-❌ 2 plugin(s) have no compatible version:
-   - abandoned-plugin@1.0.0
-     → Consider finding alternative or contact maintainer
+- **矩阵数据不在 npm 包里**：`matrix/cells/` 被 gitignore，且没有随 `files` 发布。npm 安装版没有矩阵，必须用 `--matrix` 指向本地快照，否则退出 2。
+- **覆盖范围是快照里的 50 个插件**，不是整个生态；版本与状态口径见 [docs/09](09-ecosystem-measurements.md)（包括"记录版本 ≠ 实际加载版本"的 23/200 限制）。
+- **哪边是权威**：矩阵是探针实测结果，本命令只做 join 与分类；它不重新探测，也不联网查新版本。
 
-📈 Summary:
-   Safe to upgrade: 10/15
-   Need action: 5/15
-```
+## 6. 编程 API
 
-### Why it matters
-
-Users currently have **no way to know** if their plugins will work after upgrading DSH. This tool:
-- Uses compatibility matrix data
-- Queries npm for updated versions
-- Generates actionable upgrade commands
-- Identifies plugins that need replacements
-
-## Integration
-
-### CLI Commands
-
-```bash
-# Performance analysis
-dsh-plugin-analyze performance ./plugin
-
-# Conflict detection (requires 2+ plugins)
-dsh-plugin-analyze conflicts ./plugin-a ./plugin-b
-
-# Full analysis (performance + recommendations)
-dsh-plugin-analyze full ./plugin
-
-# Upgrade planning
-dsh-plugin-upgrade-plan --from 0.2.0 --to 0.3.0
-```
-
-### Programmatic API
-
-All features are exported from the main package:
+v0.3 的导出（`src/index.js`）：
 
 ```javascript
 import {
+  loadPackage,
   detectConflicts,
   analyzePerformance,
-  analyzeSecurityDeep,
-  loadPackage
-} from '@shidesheng0218/dsh-plugin-lint';
+  analyzeSecurityDeep
+} from './src/index.js';
+
+const pkg = loadPackage('./my-plugin');
+// loadPackage(dir) → { manifest, jsFiles, entries, ... }
+
+const conflicts = detectConflicts([
+  { name: pkg.manifest.name, manifest: pkg.manifest, jsFiles: pkg.jsFiles }
+]);
+// { slots, toolNames, routes, configKeys, eventListeners, summary, experimental: true, limits }
+
+const perf = analyzePerformance(pkg);
+// { bundleSize, complexity, domImpact, networkCalls, heavyDependencies,
+//   score, rating, recommendations, experimental: true, limits }
+
+const security = analyzeSecurityDeep(pkg);
+// { findings, byCategory, summary, riskLevel, experimental: true, limits }
 ```
 
-### CI Integration
+这些导出只在未发布的工作区里存在；npm 0.1.0 的 API 面比它小。
 
-```yaml
-# .github/workflows/plugin-check.yml
-- name: Check conflicts with popular plugins
-  run: |
-    npm install -g @shidesheng0218/dsh-plugin-lint
-    
-    # Download popular plugins
-    npm install dsh-context dsh-whale-widget --prefix /tmp/test-env
-    
-    # Check for conflicts
-    dsh-plugin-analyze conflicts . /tmp/test-env/node_modules/dsh-context
+## 7. 测试
 
-- name: Performance gate
-  run: |
-    dsh-plugin-analyze performance . --json > perf.json
-    
-    # Fail if score < 60
-    SCORE=$(jq '.score' perf.json)
-    if [ "$SCORE" -lt 60 ]; then
-      echo "Performance score too low: $SCORE"
-      exit 1
-    fi
-```
+分析模块的测试在：
 
-## Testing
+- `test/composition.test.js`
+- `test/performance.test.js`
+- `test/security.test.js`
+- `test/upgrade-preview.test.js`（覆盖 `scripts/upgrade-preview.mjs`，不是本文的 upgrade-plan CLI）
 
-All new features have comprehensive test coverage:
+它们随 `npm test`（`node --test test/*.test.js`）一起跑，用例数以实际运行输出为准，不在文档里写死。
 
-```bash
-npm test
+## 8. 实现位置
 
-# Or individual test files:
-node test/composition.test.js
-node test/performance.test.js
-node test/security.test.js
-```
+| 文件 | 内容 |
+| --- | --- |
+| `src/composition.js` | 字面量提取与冲突汇总（slot/tool/route/config/waterfall） |
+| `src/performance.js` | 体积、复杂度、DOM、网络、重模式与评分 |
+| `src/security.js` | S1–S10 规则、分类、风险等级 |
+| `bin/dsh-plugin-analyze.mjs` | `conflicts`/`performance`/`security`/`full` CLI 与 JSON |
+| `bin/dsh-plugin-upgrade-plan.mjs` | 矩阵 join、profile 解析、`--check-compatibility` |
+| `examples/comprehensive-analysis.mjs` | 组合调用的演示脚本（不是 API 契约） |
 
-## Roadmap
+## 9. 与旧版文档的差异
 
-These P0 features lay the foundation for:
+早期草稿把 v0.3 分析写成已完成的能力，并把安全规则写成有 error 级。当前口径以本文为准：
 
-- **P1**: VSCode/Cursor extension for real-time conflict/performance warnings
-- **P1**: Federated compatibility matrix (plugin authors submit their own test results)
-- **P2**: AI-powered auto-fix for common issues
-- **P2**: Ecosystem health scoring and plugin recommendations
-
-## Impact Metrics
-
-To measure success:
-
-1. **Adoption**: CLI installs, API usage in other tools
-2. **Coverage**: % of ecosystem covered by conflict/performance data
-3. **Official recognition**: Referenced in DSH docs or bundled with official tools
-4. **Market integration**: dshmarket displays scores from this tool
-
-## Contributing
-
-The modular architecture makes it easy to extend:
-
-- Add new conflict patterns to `src/composition.js`
-- Add performance metrics to `src/performance.js`
-- Add security rules to `src/security.js`
-
-Each module follows the same pattern:
-1. Export a primary analysis function
-2. Accept a loaded package from `loadPackage()`
-3. Return structured findings with evidence
-
-See existing test files for examples.
+- 四项能力都是 experimental，静态启发式；
+- 安全规则没有 error 级，S5 不再是"未声明 capability"判定；
+- 性能评分不是运行时测量，空分析给 `insufficient-data`；
+- 冲突检测的运行时权威是 `scripts/matrix/conflicts.mjs`，CLI 只是预检。

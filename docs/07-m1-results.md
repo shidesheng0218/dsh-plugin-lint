@@ -1,5 +1,7 @@
 # 07 · M1 实测结果（2026-10-13）
 
+> 本文是 M1 阶段（2026-10-13）的历史记录。规则集后来有扩充，测试数量与事件白名单以当前代码为准；文中数字保留当时的测量口径。
+
 M1 的目标是**证伪最高风险的假设**：规则集能不能做到对官方代码零误报。结论是——**能，但初版规则有一半必须重做**。
 
 ## 1. 验收基线：官方包零误报
@@ -12,7 +14,7 @@ node scripts/e2e-official.mjs
   PASS
 ```
 
-**0 error / 0 warn**，只剩 info 级（缺兼容声明、缺展示元数据）——这本身正是生态现状，不是规则缺陷。
+**0 error / 0 warn**，只剩 info 级（80 I1 + 159 I2 + 1 W3 = 240 条；缺兼容声明、缺展示元数据）——这本身正是生态现状，不是规则缺陷。
 
 ## 2. 外部验证：12 个真实已发布插件
 
@@ -67,10 +69,10 @@ node scripts/lint-npm-packages.mjs dsh-context ds-bot dsh-cost-meter ... dsh-vis
 | `src/index.js` | 引擎与报告 schema |
 | `src/report.js` | text / JSON / SARIF 三种输出 |
 | `bin/dsh-plugin-lint.mjs` | CLI（`--json` `--sarif` `--dsh-version` `--exit-code`） |
-| `test/lint.test.js` | 19 个单测（每条规则正例 + 反例） |
+| `test/lint.test.js` | 28 个单测（每条规则正例 + 反例；当前套件的用例数以 `npm test` 输出为准） |
 | `scripts/e2e-official.mjs` | 官方包零误报验收 |
 | `scripts/lint-npm-packages.mjs` | 对真实已发布 npm 包抽样体检（M2 报告的基础设施） |
-| `src/data/event-types.json` | 45 个官方 session 事件类型目录（从官方 append 调用点采集） |
+| `src/data/event-types.json` | 官方 session 事件类型目录：281 个类型（其中 280 个被实际观测到）；45 是采集自 `append` 调用点的类型数（`appendSiteTypes` 字段） |
 
 ## 7. M2 建议（按实测数据重排）
 
