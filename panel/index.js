@@ -314,10 +314,16 @@ export function actionCommand(action, plugin, options = {}) {
   const steps = action === 'fix'
     ? [[...prefix, 'add', `${plugin}@${options.version}`]]
     : [[...prefix, 'remove', plugin]];
+  // A DSH shell exports ELECTRON_RUN_AS_NODE=1. In the plain-node branch that
+  // variable is meaningless and must not leak into the child process; in the
+  // Electron branch it is exactly what makes the CLI run as node.
+  const env = { ...process.env };
+  if (electron) env.ELECTRON_RUN_AS_NODE = '1';
+  else delete env.ELECTRON_RUN_AS_NODE;
   return {
     file: options.execPath ?? process.execPath,
     steps,
-    env: electron ? { ...process.env, ELECTRON_RUN_AS_NODE: '1' } : { ...process.env },
+    env,
     profile,
   };
 }

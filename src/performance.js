@@ -1,9 +1,19 @@
 /**
- * Performance analysis for plugins: startup time, memory footprint,
- * bundle size, and comparative benchmarks.
+ * Performance analysis for plugins — EXPERIMENTAL.
+ *
+ * This module reads the files a plugin would publish and derives size,
+ * complexity, DOM and network indicators from source text. It does not measure
+ * startup time, memory, or runtime behaviour; the 0-100 score is a heuristic
+ * summary of the static indicators below.
  *
  * @module performance
  */
+
+const LIMITS = [
+  'Static analysis of the files on disk: no startup time, memory, or runtime measurement is performed.',
+  'Bundle size approximates npm packing but does not resolve every npm files[] rule.',
+  'The 0-100 score is a heuristic summary; a high score is not proof of a fast plugin.',
+];
 
 import { existsSync, statSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -27,6 +37,20 @@ export function analyzePerformance(pkg) {
   metrics.score = calculatePerformanceScore(metrics);
   metrics.rating = ratePerformance(metrics.score);
   metrics.recommendations = generateRecommendations(metrics);
+  metrics.experimental = true;
+  metrics.limits = LIMITS;
+
+  if (pkg.jsFiles.length === 0) {
+    // A package with no JavaScript is not a 100/100 plugin: there is nothing to
+    // judge, so say so instead of rewarding the absence of evidence.
+    metrics.score = 0;
+    metrics.rating = 'insufficient-data';
+    metrics.recommendations.unshift({
+      issue: 'No JavaScript files were analyzed',
+      suggestion: 'The score only describes files on disk; an empty analysis is not a clean bill of health.',
+      impact: 'info',
+    });
+  }
 
   return metrics;
 }
@@ -126,18 +150,21 @@ function analyzeComplexity(pkg) {
   for (const file of pkg.jsFiles) {
     const lines = file.text.split('\n').length;
     totalLines += lines;
+    // Comments and string interiors are blanked before patterns run, so a
+    // documented pattern in a comment is not counted as code.
+    const view = file.masked ?? file.text;
 
     // Count function declarations
-    const funcMatches = file.text.match(/\bfunction\s+\w+|=>\s*\{|\bfunction\s*\(/g);
+    const funcMatches = view.match(/\bfunction\s+\w+|=>\s*\{|\bfunction\s*\(/g);
     const funcCount = funcMatches ? funcMatches.length : 0;
     totalFunctions += funcCount;
 
     // Detect deep nesting (4+ levels)
-    const nestingLevel = maxNestingLevel(file.text);
+    const nestingLevel = maxNestingLevel(view);
     if (nestingLevel >= 4) deepNesting++;
 
     // Detect long functions (>100 lines)
-    const longFuncs = detectLongFunctions(file.text);
+    const longFuncs = detectLongFunctions(view);
     longFunctions += longFuncs;
 
     const fileComplexity = calculateFileComplexity(file);
@@ -197,18 +224,19 @@ function estimateDOMImpact(pkg) {
     ]
   };
 
+  const view = clientFile.masked ?? clientFile.text;
   for (const pattern of patterns.mutations) {
-    const matches = clientFile.text.match(pattern);
+    const matches = view.match(pattern);
     domMutations += matches ? matches.length : 0;
   }
 
   for (const pattern of patterns.bodyAccess) {
-    const matches = clientFile.text.match(pattern);
+    const matches = view.match(pattern);
     directBodyAccess += matches ? matches.length : 0;
   }
 
   for (const pattern of patterns.heavySelectors) {
-    const matches = clientFile.text.match(pattern);
+    const matches = view.match(pattern);
     heavySelectors += matches ? matches.length : 0;
   }
 
@@ -234,9 +262,12 @@ function detectNetworkCalls(pkg) {
   const axiosPattern = /axios\s*\.\s*(?:get|post|put|delete)\s*\(\s*['"`]([^'"`]+)['"`]/g;
 
   for (const file of pkg.jsFiles) {
+    // The masked view blanks comments, so a URL documented in a comment is not
+    // counted as a request.
+    const view = file.masked ?? file.text;
     let m;
-    
-    while ((m = fetchPattern.exec(file.text)) !== null) {
+
+    while ((m = fetchPattern.exec(view)) !== null) {
       const url = m[1];
       calls.push({
         type: 'fetch',
@@ -255,7 +286,7 @@ function detectNetworkCalls(pkg) {
       }
     }
 
-    while ((m = axiosPattern.exec(file.text)) !== null) {
+    while ((m = axiosPattern.exec(view)) !== null) {
       const url = m[1];
       calls.push({
         type: 'axios',
@@ -291,6 +322,7 @@ function analyzeHeavyPatterns(pkg) {
   const issues = [];
 
   for (const file of pkg.jsFiles) {
+    const view = file.masked ?? file.text;
     // Synchronous fs operations
     const syncFs = [
       /\breadFileSync\b/g,
@@ -299,7 +331,7 @@ function analyzeHeavyPatterns(pkg) {
     ];
     
     for (const pattern of syncFs) {
-      const matches = file.text.match(pattern);
+      const matches = view.match(pattern);
       if (matches && matches.length > 5) {
         issues.push({
           type: 'sync-fs',
@@ -312,7 +344,7 @@ function analyzeHeavyPatterns(pkg) {
     }
 
     // Large JSON.parse in loops
-    if (/for\s*\([^)]*\)\s*\{[^}]*JSON\.parse/s.test(file.text)) {
+    if (/for\s*\([^)]*\)\s*\{[^}]*JSON\.parse/s.test(view)) {
       issues.push({
         type: 'json-parse-in-loop',
         file: file.path,
@@ -321,7 +353,7 @@ function analyzeHeavyPatterns(pkg) {
     }
 
     // Recursive directory walks without limits
-    if (/readdirSync.*recursive/i.test(file.text)) {
+    if (/readdirSync.*recursive/i.test(view)) {
       issues.push({
         type: 'unbounded-recursion',
         file: file.path,
@@ -330,7 +362,7 @@ function analyzeHeavyPatterns(pkg) {
     }
 
     // Heavy crypto operations
-    if (/\bcrypto\s*\.\s*(?:pbkdf2|scrypt)/g.test(file.text)) {
+    if (/\bcrypto\s*\.\s*(?:pbkdf2|scrypt)/g.test(view)) {
       issues.push({
         type: 'heavy-crypto',
         file: file.path,
@@ -344,7 +376,7 @@ function analyzeHeavyPatterns(pkg) {
 
 /** Calculate cyclomatic complexity approximation for a file */
 function calculateFileComplexity(file) {
-  const text = file.text;
+  const text = file.masked ?? file.text;
   let complexity = 1; // Base complexity
 
   // Count decision points
@@ -398,9 +430,9 @@ function detectLongFunctions(text) {
   let longCount = 0;
   for (const start of funcStarts) {
     const endBrace = findMatchingBrace(text, start);
-    if (endBrace - start > 100 * 80) { // Rough estimate: 100 lines * 80 chars
-      longCount++;
-    }
+    // Count actual lines in the body; the previous version compared character
+    // counts against a 100*80 estimate and mislabelled short functions.
+    if (text.slice(start, endBrace).split('\n').length > 100) longCount++;
   }
 
   return longCount;

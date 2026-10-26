@@ -26,7 +26,10 @@ export function loadPackage(dir) {
   const declaredHost = firstString(manifest.main) || exportTarget(manifest.exports, '.');
   const entries = {
     host: norm(declaredHost || 'index.js'),
-    hostDeclared: Boolean(declaredHost || (manifest.dsh && manifest.dsh.bundle)),
+    // A configuration-only bundle (dsh.bundle) needs no host entry at all
+    // (references/mcp-bundle.md): only main/exports["."] make the host file
+    // mandatory, and only they may turn a missing index.js into an E3 error.
+    hostDeclared: Boolean(declaredHost),
     client: norm(exportTarget(manifest.exports, './client') || (manifest.dsh && manifest.dsh.client ? 'client.js' : undefined)),
     patch: norm(manifest.dsh && manifest.dsh.bundle ? firstString(manifest.dsh.bundle.patch) : undefined),
     icon: norm(firstString(manifest.icon)),

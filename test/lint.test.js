@@ -103,6 +103,38 @@ test('E4 fires when dsh.client is declared without a client entry', () => {
   assert.ok(report.findings.some((f) => f.rule === 'E4' && f.level === 'error'));
 });
 
+test('E3 stays quiet for a configuration-only bundle', () => {
+  const report = fixture({
+    'package.json': base({ main: undefined, dsh: { bundle: { patch: './cordis.patch.yml' } } }),
+    'cordis.patch.yml': '- insert: []',
+  });
+  assert.equal(rules(report).includes('E3'), false, 'a configuration-only bundle needs no host entry');
+});
+
+test('E3 does not fire on the official configuration-only MCP template', () => {
+  const dir = fileURLToPath(new URL('../reference/official-skill/templates/mcp', import.meta.url));
+  const report = lintPackage(dir);
+  assert.equal(report.findings.some((f) => f.rule === 'E3'), false);
+});
+
+test('E4 fires when client.js exists but exports["./client"] is not declared', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js' }, dsh: { client: { platform: 'web' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
+  });
+  assert.ok(report.findings.some((f) => f.rule === 'E4' && f.level === 'error'));
+});
+
+test('E4 stays quiet when exports["./client"] resolves', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': './client.js' }, dsh: { client: { platform: 'web' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
+  });
+  assert.equal(rules(report).includes('E4'), false);
+});
+
 test('E5 fires when files[] omits an artifact the manifest needs', () => {
   const report = fixture({
     'package.json': base({ files: ['index.js'], dsh: { bundle: { patch: './cordis.patch.yml' } } }),
