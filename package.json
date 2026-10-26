@@ -1,6 +1,6 @@
 {
   "name": "@shidesheng0218/dsh-plugin-lint",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.",
   "keywords": [
     "dsh",
@@ -22,7 +22,9 @@
   },
   "bin": {
     "dsh-plugin-lint": "bin/dsh-plugin-lint.mjs",
-    "dsh-plugin-probe": "scripts/probe-boot.mjs"
+    "dsh-plugin-probe": "scripts/probe-boot.mjs",
+    "dsh-plugin-analyze": "bin/dsh-plugin-analyze.mjs",
+    "dsh-plugin-upgrade-plan": "bin/dsh-plugin-upgrade-plan.mjs"
   },
   "files": [
     "bin/",

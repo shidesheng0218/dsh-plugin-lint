@@ -8,7 +8,7 @@
 
 **Conformance checks and a compatibility matrix for DeepSeek Harness plugins — factual, evidence-backed, zero-config.**
 
-[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Panel](#the-panel) · [Conflicts](#composition-conflicts) · [Federation](#federation) · [中文](#中文)
+[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Panel](#the-panel) · [New Features](#new-features) · [Federation](#federation) · [中文](#中文)
 
 ![The compatibility panel inside the DSH settings page](docs/assets/panel.png)
 
@@ -182,6 +182,116 @@ npx @shidesheng0218/dsh-plugin-lint . --exit-code  # exit 1 when an error-level 
 Exit codes: `0` ok · `1` errors found with `--exit-code` · `2` the run failed.
 
 Commands in this README that start with `node scripts/` run from a **checkout of this repository** — the matrix runner, the upgrade preview, and the report builders read files the npm package does not ship. The npm package ships the linter CLI, the probe (also available as `dsh-plugin-probe`), and the library.
+
+## New Features
+
+### Extended Analysis Tools
+
+Beyond static conformance checks, dsh-plugin-lint now provides three powerful analysis capabilities:
+
+#### 1. Composition Conflict Detection
+
+Detects collisions when multiple plugins compete for the same resources:
+
+```bash
+# Check for conflicts across plugins
+dsh-plugin-analyze conflicts ./plugin-a ./plugin-b ./plugin-c
+```
+
+Finds:
+- **UI Slot Collisions**: Multiple plugins claiming the same slot (e.g., `ui.slot.sidebar`)
+- **Tool Name Duplicates**: Different plugins registering tools with identical names
+- **Route Conflicts**: HTTP route collisions
+- **Config Key Overwrites**: Configuration key conflicts
+- **Waterfall Listener Issues**: Event handlers that don't properly return `next()`
+
+**Why it matters**: From the research, 786 UI plugins compete for limited slots. No existing tool detects these conflicts before users install them.
+
+#### 2. Performance Analysis
+
+Provides actionable performance metrics with a 0-100 score:
+
+```bash
+# Analyze performance impact
+dsh-plugin-analyze performance ./my-plugin
+```
+
+Measures:
+- **Bundle Size**: Total shipped bytes, JS size breakdown, largest files
+- **Code Complexity**: Lines, functions, nesting depth, maintainability rating
+- **DOM Impact**: Mutations, direct body access, heavy selectors (client plugins)
+- **Network Activity**: External calls, domains contacted, undeclared requests
+- **Performance Score**: Actionable recommendations for improvement
+
+**Differentiation**: While `dsh-testkit` tests lifecycle and `dsh-plugin-doctor` checks structure, performance analysis answers "Why is my DSH slow after installing this plugin?"
+
+#### 3. Security Deep Analysis
+
+Goes beyond capability disclosure to analyze **how** capabilities are used:
+
+```bash
+dsh-plugin-analyze security ./my-plugin
+```
+
+Every finding is heuristic and capped at warning level — an error level is reserved for rules that are mechanically decidable. Each finding names the file, the line and the evidence, and the report says plainly that it is not a security verdict. The same analysis is available as a library call (`analyzeSecurityDeep`).
+
+Detects:
+- **Data Exfiltration**: Session/credential data sent to external domains (S1)
+- **Credential Handling**: Storing tokens in localStorage (S2)
+- **Code Injection**: eval(), Function(), innerHTML without sanitization (S3, S4)
+- **Command Injection**: Shell commands built with string interpolation (S6)
+- **Network Integrity**: Undeclared domains, insecure HTTP (S5, S10)
+- **File System Access**: Operations outside workspace (S7)
+
+**Complements dsh-trust-check**: 
+- `dsh-trust-check`: "This plugin CAN access network" (capability)
+- **Security deep analysis**: "This plugin SENDS session data to analytics.example.com" (behavior)
+
+From research: 1,620 plugins declare shell access, 486 declare credential access. None are audited for how they use these capabilities.
+
+#### 4. Upgrade Path Generator
+
+Helps plan DSH version upgrades:
+
+```bash
+# Check upgrade impact for installed plugins
+dsh-plugin-upgrade-plan --from 0.2.0-rc.2 --to 0.3.0 --installed ~/.dsh/profiles/default
+
+# Check single plugin compatibility
+dsh-plugin-upgrade-plan --check-compatibility ./my-plugin --target 0.3.0
+```
+
+Provides:
+- ✅ Plugins already compatible with target version
+- ⚠️ Plugins that need updates (with recommended versions)
+- ❌ Plugins with no compatible version (suggests alternatives)
+- 🔧 Auto-generated `npm install` commands
+
+**Why it matters**: Users have no way to know if their plugins will work after upgrading DSH. This tool uses the compatibility matrix and npm version history to provide actionable upgrade guidance.
+
+### Programmatic API
+
+All features are available programmatically:
+
+```javascript
+import {
+  detectConflicts,
+  analyzePerformance,
+  analyzeSecurityDeep,
+  loadPackage
+} from '@shidesheng0218/dsh-plugin-lint';
+
+const packages = ['./plugin-a', './plugin-b'].map(loadPackage);
+const conflicts = detectConflicts(packages);
+const perf = analyzePerformance(packages[0]);
+const security = analyzeSecurityDeep(packages[0]);
+
+console.log(`Conflicts: ${conflicts.summary.total}`);
+console.log(`Performance: ${perf.score}/100 (${perf.rating})`);
+console.log(`Security: ${security.riskLevel} risk`);
+```
+
+See [docs/NEW_FEATURES.md](docs/NEW_FEATURES.md) for detailed documentation.
 
 ## The compatibility matrix
 

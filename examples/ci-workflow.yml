@@ -1,0 +1,214 @@
+name: Plugin Quality Gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  comprehensive-analysis:
+    name: Comprehensive Plugin Analysis
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install dsh-plugin-lint
+        run: npm install -g @shidesheng0218/dsh-plugin-lint
+      
+      # 1. Static conformance checks
+      - name: Lint conformance
+        run: |
+          dsh-plugin-lint . --json > lint-report.json
+          dsh-plugin-lint . --sarif > lint-report.sarif
+          
+      - name: Upload SARIF to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: lint-report.sarif
+        continue-on-error: true
+      
+      # 2. Performance analysis with gates
+      - name: Performance analysis
+        run: |
+          dsh-plugin-analyze performance . --json > perf-report.json
+          
+          # Extract score
+          SCORE=$(jq '.score' perf-report.json)
+          echo "Performance score: $SCORE/100"
+          
+          # Fail if score < 60
+          if (( $(echo "$SCORE < 60" | bc -l) )); then
+            echo "❌ Performance score too low: $SCORE"
+            echo "See perf-report.json for recommendations"
+            exit 1
+          fi
+          
+          echo "✅ Performance: $SCORE/100"
+      
+      # 3. Security deep analysis
+      - name: Security analysis
+        run: |
+          node -e "
+          import { analyzeSecurityDeep, loadPackage } from '@shidesheng0218/dsh-plugin-lint';
+          const pkg = loadPackage('.');
+          const result = analyzeSecurityDeep(pkg);
+          
+          console.log(\`Security risk: \${result.riskLevel}\`);
+          console.log(\`Findings: \${result.summary.error} error(s), \${result.summary.warn} warning(s)\`);
+          
+          // Fail on critical or high risk
+          if (result.riskLevel === 'critical' || result.riskLevel === 'high') {
+            console.error('❌ Security risk level too high');
+            process.exit(1);
+          }
+          
+          // Fail on error-level findings
+          if (result.summary.error > 0) {
+            console.error('❌ Critical security issues found');
+            for (const finding of result.findings.filter(f => f.level === 'error')) {
+              console.error(\`  [\${finding.rule}] \${finding.title}\`);
+              console.error(\`    \${finding.file}:\${finding.line}\`);
+            }
+            process.exit(1);
+          }
+          
+          console.log('✅ Security analysis passed');
+          " --input-type=module
+      
+      # 4. Check for conflicts with popular plugins
+      - name: Conflict detection
+        run: |
+          # Download popular plugins for conflict testing
+          mkdir -p /tmp/test-plugins
+          cd /tmp/test-plugins
+          
+          # Install a few popular plugins
+          npm init -y
+          npm install dsh-context dsh-whale-widget dsh-session --no-save || true
+          
+          cd $GITHUB_WORKSPACE
+          
+          # Check for conflicts
+          dsh-plugin-analyze conflicts . /tmp/test-plugins/node_modules/dsh-* || {
+            echo "⚠️  Conflicts detected with popular plugins"
+            echo "Review the conflict report above"
+            # Don't fail the build, just warn
+          }
+      
+      # 5. Generate comprehensive report
+      - name: Generate comprehensive report
+        if: always()
+        run: |
+          node examples/comprehensive-analysis.mjs . --json > comprehensive-report.json
+          
+          echo "## Plugin Quality Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Extract key metrics
+          OVERALL=$(jq '.overallScore' comprehensive-report.json)
+          RATING=$(jq -r '.rating' comprehensive-report.json)
+          CONF=$(jq '.conformance.errors' comprehensive-report.json)
+          PERF=$(jq '.performance.score' comprehensive-report.json)
+          SEC=$(jq -r '.security.riskLevel' comprehensive-report.json)
+          
+          echo "**Overall Score:** $OVERALL/100 ($RATING)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Conformance errors: $CONF" >> $GITHUB_STEP_SUMMARY
+          echo "- Performance: $PERF/100" >> $GITHUB_STEP_SUMMARY
+          echo "- Security risk: $SEC" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          # Add recommendations
+          RECS=$(jq -r '.recommendations[]' comprehensive-report.json)
+          if [ ! -z "$RECS" ]; then
+            echo "### Recommendations" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.recommendations[] | "- " + .' comprehensive-report.json >> $GITHUB_STEP_SUMMARY
+          fi
+      
+      # 6. Upload artifacts
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: quality-reports
+          path: |
+            lint-report.json
+            lint-report.sarif
+            perf-report.json
+            comprehensive-report.json
+      
+      # 7. Comment on PR
+      - name: Comment PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const report = JSON.parse(fs.readFileSync('comprehensive-report.json', 'utf8'));
+            
+            const emoji = report.overallScore >= 90 ? '🟢' : 
+                         report.overallScore >= 75 ? '🟡' : '🔴';
+            
+            const body = `## ${emoji} Plugin Quality Report
+            
+            **Overall Score:** ${report.overallScore}/100 (${report.rating})
+            
+            | Metric | Score |
+            |--------|-------|
+            | Conformance | ${report.scores.conformance}/100 (${report.conformance.errors} error(s)) |
+            | Performance | ${report.performance.score}/100 |
+            | Security | ${report.scores.security}/100 (${report.security.riskLevel} risk) |
+            
+            ${report.recommendations.length > 0 ? `
+            ### 💡 Recommendations
+            ${report.recommendations.map(r => `- ${r}`).join('\n')}
+            ` : '✅ No major issues detected'}
+            `;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+  compatibility-check:
+    name: DSH Version Compatibility
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      
+      - name: Install dsh-plugin-lint
+        run: npm install -g @shidesheng0218/dsh-plugin-lint
+      
+      - name: Check compatibility declarations
+        run: |
+          # Check if plugin declares compatibility
+          dsh-plugin-upgrade-plan \
+            --check-compatibility . \
+            --target 0.2.0-rc.2
+          
+          # Verify compatibility is declared in manifest
+          if ! jq -e '.dsh.compatibility.dshReleases' package.json > /dev/null; then
+            echo "⚠️  Warning: No DSH compatibility declared in package.json"
+            echo ""
+            echo "Add to package.json:"
+            echo '  "dsh": {'
+            echo '    "compatibility": {'
+            echo '      "dshReleases": {'
+            echo '        "0.2.0-rc.2": "compatible"'
+            echo '      }'
+            echo '    }'
+            echo '  }'
+          fi

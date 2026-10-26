@@ -143,7 +143,7 @@ if (EXPLORE) {
 // The label first matches the sidebar entry, which is itself the proof that the
 // plugin registered a settings section — so capture that, then click through to
 // the section's own content.
-const navEntry = page.getByText('Plugin compatibility', { exact: false }).first();
+const navEntry = page.getByText(/Plugin (Health Center|compatibility)/i).first();
 let found = false;
 try {
   if (await navEntry.isVisible({ timeout: 5000 })) {

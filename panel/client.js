@@ -381,7 +381,7 @@ window.__ModuleLoader__.load({
               React.createElement('strong', { style: { fontSize: '13px', overflowWrap: 'anywhere' } }, row.name),
               React.createElement('span', { style: { color: colorFor(row), fontSize: '12px' } }, statusText(row))),
             React.createElement('div', { style: { ...quiet, fontSize: '12px' } },
-              row.version || (row.firstParty ? t('bundled') : t('notInstalled'))),
+              row.version || (row.firstParty ? null : t('notInstalled'))),
             React.createElement('p', { style: { ...quiet, margin: '5px 0 9px' } }, healthReason(row, t)),
             actionButtons(row)))),
         React.createElement('details', { style: { marginTop: '24px', borderTop: T.border, paddingTop: '14px' } },

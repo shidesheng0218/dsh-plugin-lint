@@ -5,6 +5,9 @@ export { RULES, EVENT_TYPES, DOC };
 export { maskSource } from './mask.js';
 export { loadPackage, filesCover } from './load.js';
 export { formatText, toSarif, toBadge } from './report.js';
+export { detectConflicts } from './composition.js';
+export { analyzePerformance } from './performance.js';
+export { analyzeSecurityDeep, SECURITY_RULES } from './security.js';
 
 const LEVEL_ORDER = { error: 0, warn: 1, info: 2 };
 
