@@ -6,9 +6,9 @@
 [![Node](https://img.shields.io/badge/node-%3E%3D22-brightgreen)](package.json)
 [![Dependencies](https://img.shields.io/badge/runtime%20dependencies-0-brightgreen)](package.json)
 
-**Conformance checks and a compatibility matrix for DeepSeek Harness plugins — factual, evidence-backed, zero-config.**
+**Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.**
 
-[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Panel](#the-panel) · [New Features](#new-features) · [Federation](#federation) · [中文](#中文)
+[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Panel](#the-panel) · [v0.3 analysis (experimental)](#v03-analysis-experimental-unpublished) · [Federation](#federation) · [中文](#中文)
 
 ![The compatibility panel inside the DSH settings page](docs/assets/panel.png)
 
@@ -18,21 +18,25 @@
 
 ## Why this exists
 
-The ecosystem has 4,508 catalogued plugins and adds roughly a thousand a month. Upgrade breakage is a product category of its own (three tools sell the *recovery*), but nothing was checking the code against the documented practices.
+The ecosystem catalog used for the measurements below lists 4,508 entries (snapshot 2026-10-11). Upgrade breakage is a recurring problem, and the code that plugins publish is not checked against the documented practices.
 
-Measured on 2026-10-13 against the top 40 published community plugins and an installed DSH 0.2.0-rc.2:
+Measured on 2026-10-13 against the Top 100 published community plugins (static analysis of the published tarballs; no plugin code was executed):
 
 | Observation | Result |
 | --- | --- |
-| plugins whose `peerDependencies` couple them to a Harness Client package | **16 / 40 (40%)** |
-| plugins declaring `dsh.compatibility.dshReleases` | **5 / 40 (13%)** |
-| plugins declaring an `icon` | 16 / 40 (40%) |
+| plugins that load at least one Harness Client package | **62 / 100 (62%)** |
+| plugins declaring `dsh.compatibility.dshReleases` | **13 / 100 (13%)** |
+| plugins declaring no compatibility range | **87 / 100 (87%)** |
+| plugins declaring an `icon` | 31 / 100 (31%) |
+| plugins triggering at least one error-level rule | 1 / 100 (1%) |
 
-These are not style issues. A coupling to `@deepseek-ai/dsh-client-*` breaks when the host updates those packages without notice. A missing compatibility declaration means upgrade day is untested. A `files[]` gap passes local testing and only fails in the published tarball.
+A coupling to `@deepseek-ai/dsh-client-*` breaks when the host updates those packages without notice. A missing compatibility declaration means upgrade day is untested. A `files[]` gap passes local testing and only fails in the published tarball.
+
+The raw artifacts behind these numbers (`reports/`, `matrix/cells/`) are generated locally and gitignored; they are not part of a clean clone. See [docs/09](docs/09-ecosystem-measurements.md) for the aggregate record and the [data policy](#data-policy).
 
 ## What this is
 
-Four tools that answer four different questions about a DeepSeek Harness plugin. None of them needs a build step, a config file, or a network connection to run.
+Four tools that answer four different questions about a DeepSeek Harness plugin.
 
 ```mermaid
 flowchart TB
@@ -51,7 +55,9 @@ flowchart TB
   class lint,probe,matrix,conflicts,panel tool
 ```
 
-Every finding carries a file, a line, an evidence excerpt, and the upstream document the rule encodes.
+The linter and the static analysis commands need no build step, no config file and no network access. The probe and the matrix runner install packages from npm, so they need network access; the upgrade planner reads a local matrix and makes no network request.
+
+Every lint finding carries a file, a line, an evidence excerpt, and the upstream document the rule encodes.
 
 ## What this is not
 
@@ -67,8 +73,8 @@ Every finding carries a file, a line, an evidence excerpt, and the upstream docu
 | **dsh-plugin-lint** | **is it written the way the reference says, will it survive publishing, and will it survive an upgrade?** | — |
 
 ```console
-$ npx @shidesheng0218/dsh-plugin-lint .
-demo-plugin@1.0.0  9 checks
+$ node bin/dsh-plugin-lint.mjs .
+demo-plugin@1.0.0  11 checks
 
   E2 error  client bundle factory id matches nothing the loader can ask for
          lib/client.js:2
@@ -88,15 +94,19 @@ demo-plugin@1.0.0  9 checks
   1 error · 1 warn · 0 info
 ```
 
+The header count is read from the rule set (`RULES.length`); it is 11 in this checkout.
+
 ## The rules
 
 Levels are assigned by **how reliably a rule can decide**, not by how bad the pattern sounds. A rule that cannot decide reliably does not get to be an error.
+
+Rule IDs are stable identifiers, not severity labels: `W3` reports at info level and `I3` at warn level. The tables below are grouped by level.
 
 **error** — mechanically decidable, never observed in the official packages
 
 | Rule | What it catches |
 | --- | --- |
-| E1 | `session.append("type", …)` with a type outside the Harness event catalog (45 types, harvested from the official packages) |
+| E1 | `session.append("type", …)` with a type outside the Harness event catalog (281 types harvested from the official packages; 280 observed) |
 | E2 | client bundle factory id ≠ anything the loader can ask for (the registration silently never resolves) |
 | E3 | `main` / `exports["./client"]` / `dsh.bundle.patch` / `icon` points at a missing file |
 | E4 | `dsh.client` declared with no resolvable `./client` export |
@@ -125,18 +135,18 @@ W1 encodes this passage from the reference, verbatim:
 > Do not `require('@deepseek-ai/dsh-client-ui-primitives')` or load any other Harness Client package as a module … copy markup, CSS, and behavior from the primitive into the plugin.
 > — `dsh plugin-development / references/practices.md`
 
-Measured on 2026-10-13: 62% of the Top 100 published plugins load at least one of these packages, and the most loaded one (ui-primitives) is imported by 71 plugins.
+Measured on 2026-10-13: 62 of the Top 100 published plugins load at least one of these packages. The ui-primitives package is referenced by 48 distinct plugins; 71 of the 86 W1 findings mention it (one plugin can produce more than one finding).
 
 ### Measured with this tool
 
 | Run | Result |
 | --- | --- |
-| 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 239 info |
-| Top 100 published community plugins | **1 error · 86 warn** · 223 info |
+| 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 240 info |
+| Top 100 published community plugins | **1 error · 86 warn** · 240 info |
 | — of which couple to a Harness Client package | **62%** |
 | — of which declare no DSH compatibility range | **87%** |
 
-The error rules did not fire on any published plugin. They are insurance against rare, fatal mistakes — the daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07](docs/07-m1-results.md).
+The official-package run predates the Top 100 run (both 2026-10-13); the two info totals of 240 are coincidental (240 = 80 I1 + 159 I2 + 1 W3 on the official set; 240 = 87 I1 + 136 I2 + 17 W3 on the Top 100). The error rules fired on 1 of the 100 published plugins (E1: an append type outside the catalog). The daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07](docs/07-m1-results.md) and [docs/09](docs/09-ecosystem-measurements.md).
 
 ## The probe
 
@@ -166,9 +176,13 @@ node scripts/probe-boot.mjs dsh-mnemon --tools
 #   system prompt 2640 -> 7153 chars
 ```
 
+That is example output from the 2026-10-13 run. The probe installs the target from npm or from a path, so it executes third-party code in the current user's environment without a sandbox. Run it on plugins you are willing to execute.
+
 See [docs/11](docs/11-m4-capability-probe.md).
 
 ## Usage
+
+The npm release is **0.1.0** (published 2026-10-14). This checkout is **0.3.0, unpublished**; the analysis commands described below exist only in the checkout.
 
 ```bash
 npx @shidesheng0218/dsh-plugin-lint .            # lint the package in the current directory
@@ -181,137 +195,112 @@ npx @shidesheng0218/dsh-plugin-lint . --exit-code  # exit 1 when an error-level 
 
 Exit codes: `0` ok · `1` errors found with `--exit-code` · `2` the run failed.
 
-Commands in this README that start with `node scripts/` run from a **checkout of this repository** — the matrix runner, the upgrade preview, and the report builders read files the npm package does not ship. The npm package ships the linter CLI, the probe (also available as `dsh-plugin-probe`), and the library.
+To run the checkout instead of the npm release, use `node bin/dsh-plugin-lint.mjs <dir>`. Commands in this README that start with `node scripts/` also run from a **checkout** — the matrix runner, the probe, the upgrade preview, and the report builders read files the npm package does not ship.
 
-## New Features
+## v0.3 analysis (experimental, unpublished)
 
-### Extended Analysis Tools
+The workspace is at 0.3.0; the latest npm release is 0.1.0. The four capabilities below ship in the checkout only and are **experimental**: they are static heuristics over files on disk. None of them executes a plugin, measures runtime cost, or issues a security verdict. A clean run means no pattern matched.
 
-Beyond static conformance checks, dsh-plugin-lint now provides three powerful analysis capabilities:
+| Command | The question it answers |
+| --- | --- |
+| `dsh-plugin-analyze conflicts <dir...>` | do two or more plugins claim the same slot, tool name, route or config key? |
+| `dsh-plugin-analyze performance <dir>` | how much does the package ship, and which static patterns look expensive? |
+| `dsh-plugin-analyze security <dir>` | which patterns would a reviewer want to look at first? |
+| `dsh-plugin-analyze full <dir>` | lint + performance + security for one package |
+| `dsh-plugin-upgrade-plan ...` | given a profile and a target DSH version, which plugins need action? |
 
-#### 1. Composition Conflict Detection
+All four `analyze` subcommands accept `--json` (stdout is pure JSON; diagnostics go to stderr) and `--exit-code`. `--help` exits 0; an unknown option exits 2; a missing package directory exits 2.
 
-Detects collisions when multiple plugins compete for the same resources:
+With `--exit-code`: `conflicts` exits 1 when any conflict is found, `security` exits 1 when a warning-level finding is present (info-level inventory entries do not gate), `full` exits 1 when lint reports an error or security reports a warning, and `performance` always exits 0 (a score is not a gate). Without the flag every successful run exits 0.
 
-```bash
-# Check for conflicts across plugins
-dsh-plugin-analyze conflicts ./plugin-a ./plugin-b ./plugin-c
-```
-
-Finds:
-- **UI Slot Collisions**: Multiple plugins claiming the same slot (e.g., `ui.slot.sidebar`)
-- **Tool Name Duplicates**: Different plugins registering tools with identical names
-- **Route Conflicts**: HTTP route collisions
-- **Config Key Overwrites**: Configuration key conflicts
-- **Waterfall Listener Issues**: Event handlers that don't properly return `next()`
-
-**Why it matters**: From the research, 786 UI plugins compete for limited slots. No existing tool detects these conflicts before users install them.
-
-#### 2. Performance Analysis
-
-Provides actionable performance metrics with a 0-100 score:
+### Composition conflicts
 
 ```bash
-# Analyze performance impact
-dsh-plugin-analyze performance ./my-plugin
+node bin/dsh-plugin-analyze.mjs conflicts ./plugin-a ./plugin-b ./plugin-c
+node bin/dsh-plugin-analyze.mjs conflicts ./plugin-a ./plugin-b --json
 ```
 
-Measures:
-- **Bundle Size**: Total shipped bytes, JS size breakdown, largest files
-- **Code Complexity**: Lines, functions, nesting depth, maintainability rating
-- **DOM Impact**: Mutations, direct body access, heavy selectors (client plugins)
-- **Network Activity**: External calls, domains contacted, undeclared requests
-- **Performance Score**: Actionable recommendations for improvement
+The static scan compares literals at registration sites: UI slot names (`ctx.slots.inject` / `ctx.slots.register`), tool names (`ctx.tools.register(defineTool(...))` and declarative arrays), route paths (`connection.fetch.register`, older `ctx.router.*`), config keys, and waterfall listeners. A name claimed by two plugins is reported with the file, line and a resolution hint; two declarations by the same plugin are not reported as a conflict. Dynamic names are not resolved. The runtime authority is `scripts/matrix/conflicts.mjs`, which installs the plugins together and reads what the host registered — the static scan is a pre-flight hint, and a miss is not proof that two plugins compose.
 
-**Differentiation**: While `dsh-testkit` tests lifecycle and `dsh-plugin-doctor` checks structure, performance analysis answers "Why is my DSH slow after installing this plugin?"
-
-#### 3. Security Deep Analysis
-
-Goes beyond capability disclosure to analyze **how** capabilities are used:
+### Performance analysis
 
 ```bash
-dsh-plugin-analyze security ./my-plugin
+node bin/dsh-plugin-analyze.mjs performance ./my-plugin
 ```
 
-Every finding is heuristic and capped at warning level — an error level is reserved for rules that are mechanically decidable. Each finding names the file, the line and the evidence, and the report says plainly that it is not a security verdict. The same analysis is available as a library call (`analyzeSecurityDeep`).
+Static counts, not measurements: shipped and JavaScript bytes, largest files, lines/functions/nesting depth (long functions are >100 lines), DOM access patterns, literal network call sites, and heavy dependency patterns. Comments are excluded because the analysis reads the masked source. The 0–100 score is a heuristic index assembled from fixed penalty thresholds; it is useful for comparing two packages or tracking a package over time, not as a runtime claim. A package with no JavaScript to analyse scores 0 with rating `insufficient-data` — the absence of evidence is not a clean bill.
 
-Detects:
-- **Data Exfiltration**: Session/credential data sent to external domains (S1)
-- **Credential Handling**: Storing tokens in localStorage (S2)
-- **Code Injection**: eval(), Function(), innerHTML without sanitization (S3, S4)
-- **Command Injection**: Shell commands built with string interpolation (S6)
-- **Network Integrity**: Undeclared domains, insecure HTTP (S5, S10)
-- **File System Access**: Operations outside workspace (S7)
-
-**Complements dsh-trust-check**: 
-- `dsh-trust-check`: "This plugin CAN access network" (capability)
-- **Security deep analysis**: "This plugin SENDS session data to analytics.example.com" (behavior)
-
-From research: 1,620 plugins declare shell access, 486 declare credential access. None are audited for how they use these capabilities.
-
-#### 4. Upgrade Path Generator
-
-Helps plan DSH version upgrades:
+### Security deep analysis
 
 ```bash
-# Check upgrade impact for installed plugins
-dsh-plugin-upgrade-plan --from 0.2.0-rc.2 --to 0.3.0 --installed ~/.dsh/profiles/default
-
-# Check single plugin compatibility
-dsh-plugin-upgrade-plan --check-compatibility ./my-plugin --target 0.3.0
+node bin/dsh-plugin-analyze.mjs security ./my-plugin
 ```
 
-Provides:
-- ✅ Plugins already compatible with target version
-- ⚠️ Plugins that need updates (with recommended versions)
-- ❌ Plugins with no compatible version (suggests alternatives)
-- 🔧 Auto-generated `npm install` commands
+Ten pattern rules (S1–S10) look for session data sent to external domains, credentials written to browser storage, `eval`/`Function`, non-static `innerHTML` in the client entry, literal external domains, shell commands built by interpolation, absolute-path file access, crypto use, `process.env` access, and insecure HTTP. Every rule reports at warn or info level: these patterns are not mechanically decidable, so none is an error. Rules read the masked source, so a URL or `eval` inside a comment is not a finding. S5 is an inventory of literal external domains — the report does not compare them against a declared capability, because the DSH manifest has no such field. `riskLevel` summarises the warning count (minimal · low · medium · high, no "critical") and is not a verdict; read the findings, not the label.
 
-**Why it matters**: Users have no way to know if their plugins will work after upgrading DSH. This tool uses the compatibility matrix and npm version history to provide actionable upgrade guidance.
+### Upgrade plan
+
+```bash
+node bin/dsh-plugin-upgrade-plan.mjs --from 0.2.0-rc.2 --to 0.2.1-alpha.2 --installed ~/.dsh/profiles/default
+node bin/dsh-plugin-upgrade-plan.mjs --from 0.2.0-rc.2 --to 0.2.1-alpha.2 --installed <profile> --matrix matrix/cells --json
+node bin/dsh-plugin-upgrade-plan.mjs --check-compatibility ./my-plugin --target 0.2.1-alpha.2
+```
+
+It reads the profile's installed bundles, joins them against the local matrix in `matrix/cells` (override with `--matrix <dir>`), and reports what changes on the target version. It makes no network request and does not query npm for newer versions: a recommended version is one the matrix observed active on the target DSH version. `--json` emits pure JSON in both modes.
+
+Exit codes for the analysis mode: `0` no action needed · `1` at least one plugin needs an update or has no compatible version · `2` the run failed, including when no matrix data is available. `--check-compatibility`: `0` compatible · `1` incompatible · `2` unknown or no data.
+
+The matrix is not shipped in the npm package and `matrix/cells/` is gitignored, so this command only works where a matrix snapshot exists. Its coverage is the 50 plugins in that snapshot, not the whole ecosystem.
 
 ### Programmatic API
 
-All features are available programmatically:
+The analysis functions are exported from the package entry point. In the unpublished checkout:
 
 ```javascript
 import {
+  loadPackage,
   detectConflicts,
   analyzePerformance,
-  analyzeSecurityDeep,
-  loadPackage
-} from '@shidesheng0218/dsh-plugin-lint';
+  analyzeSecurityDeep
+} from './src/index.js';
 
-const packages = ['./plugin-a', './plugin-b'].map(loadPackage);
-const conflicts = detectConflicts(packages);
-const perf = analyzePerformance(packages[0]);
-const security = analyzeSecurityDeep(packages[0]);
+const packages = ['./plugin-a', './plugin-b'].map((dir) => {
+  const pkg = loadPackage(dir);
+  return { name: pkg.manifest.name, manifest: pkg.manifest, jsFiles: pkg.jsFiles };
+});
 
-console.log(`Conflicts: ${conflicts.summary.total}`);
-console.log(`Performance: ${perf.score}/100 (${perf.rating})`);
-console.log(`Security: ${security.riskLevel} risk`);
+const conflicts = detectConflicts(packages);        // { slots, toolNames, routes, configKeys, eventListeners, summary, experimental, limits }
+const perf = analyzePerformance(loadPackage('./plugin-a'));   // { score, rating, recommendations, experimental, limits, … }
+const security = analyzeSecurityDeep(loadPackage('./plugin-a')); // { findings, summary, riskLevel, experimental, limits, … }
 ```
 
-See [docs/NEW_FEATURES.md](docs/NEW_FEATURES.md) for detailed documentation.
+The published 0.1.0 package predates these exports. See [docs/19](docs/19-analysis-tools.md) for field-level documentation and [docs/20](docs/20-release-0.3.0.md) for the draft release notes.
 
 ## The compatibility matrix
 
-The probe also runs as a grid: one cell per plugin version × DSH version × composition.
+The probe also runs as a grid: one cell per plugin × DSH version × composition.
 
 ```bash
 node scripts/matrix/run.mjs --targets matrix/targets-top50.json --concurrency 4
 node scripts/matrix/site.mjs
 ```
 
-Measured on 2026-10-13 over **228 cells** (57 plugins, two DSH versions, headless and web):
+The current tracked snapshot was collected on **2026-10-16** (`generatedAt 2026-10-16T02:45:50Z`): **50 plugins × 2 DSH versions × 2 compositions = 200 cells**. The counts are in [`panel/data/aggregate.json`](panel/data/aggregate.json):
 
-| Status | Cells | Meaning |
+| Status | 0.2.0-rc.2 | 0.2.1-alpha.2 |
 | --- | --- | --- |
-| active | 136 | the host half mounted |
-| awaiting-service | 31 | this composition does not provide a service it waits for |
-| rejected-by-host | 30 | **the host itself refused the install** |
-| install-failed | 3 | network (native package download) |
+| active | 80 | 72 |
+| awaiting-service | 16 | 20 |
+| rejected-by-host | 2 | 8 |
+| install-failed | 2 | 0 |
 
-**17 of 57 plugins get a worse verdict on the newer DSH version and none get better**; 14 are the host refusing the install outright, and the largest system-prompt growth observed was 10,862 characters. Aggregate numbers: [docs/09](docs/09-ecosystem-measurements.md).
+Each version column sums to 100 cells (50 plugins × headless/web). The snapshot covers only the two pinned DSH versions; newer releases are not tested.
+
+Three data-quality caveats apply to the matrix and to anything derived from it:
+
+- **Recorded version ≠ loaded version.** A cell records `plugin.version` from the registry at collection time, but the probe installs by bare package name. In **23 of the 200 cells** the recorded version differs from the version the cell notes was actually loaded (e.g. `dsh-context` records 0.72.0 while 0.71.0 was installed). The `reproduce` command in a cell does not pin a version, so rerunning it today can test a different release.
+- **The per-plugin data is not in the repository.** `matrix/cells/` and `matrix/index/` are gitignored. A clean clone contains the target list and the aggregate counts, not the cells; rebuilding them needs network access, npm and the probe.
+- **Older totals are not cited.** Earlier drafts reported a larger plugin run and a plugin-level count of verdicts that got worse. That run cannot be reconstructed from this repository, so it is not cited here; [docs/09](docs/09-ecosystem-measurements.md) records why.
 
 ### Upgrade preview
 
@@ -331,7 +320,7 @@ Profile ~/.dsh/profiles/default · 8 installed (6 community, 2 first-party)
       0.2.0-rc.2: active   ->   0.2.1-alpha.2: rejected-by-host
 ```
 
-A plugin the matrix does not cover is reported as unknown, not as a verdict. First-party bundles are counted but not previewed — the matrix says nothing about them.
+The output above is an illustrative sample. A plugin the matrix does not cover is reported as unknown, not as a verdict. First-party bundles are counted but not previewed — the matrix says nothing about them.
 
 ## Composition conflicts
 
@@ -356,17 +345,19 @@ tool-beta: Error: tool "collide_probe" is already registered
   (for a per-agent variant, register through that agent's `agent.ctx` instead)
 ```
 
-It is not "the last one wins" — the later plugin is discarded whole. And because a failed mount is only a warning with exit code 0, a user can run two clashing plugins with one of them silently doing nothing. See [docs/18](docs/18-composition-conflicts.md).
+It is not "the last one wins" — the later plugin is discarded whole. And because a failed mount is only a warning with exit code 0, a user can run two clashing plugins with one of them silently doing nothing. This measurement is historical: it depends on matrix cells that are gitignored, and the installed-pair verification is a manual step, not part of the CLI. See [docs/18](docs/18-composition-conflicts.md).
 
 ## The panel
 
-[`panel/`](panel/) is a real DSH plugin: a settings section listing what this profile has installed, how each plugin fares across DSH versions, and — below the table — the ecosystem picture: aggregate counts per version, never a package name. The screenshot at the top of this file is it, captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
+[`panel/`](panel/) is a real DSH plugin: a settings section — titled **Plugin Health Center** — listing what this profile has installed, how each plugin fares across DSH versions, and, below the table, aggregate ecosystem counts per version (never a package name). The screenshot at the top of this file was captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
 
-A profile with no community plugins still shows the matrix overview: 57 plugins probed across 2 DSH versions, and the bars make the upgrade story visible at a glance (80% mounted on 0.2.0-rc.2, 57% on 0.2.1-alpha.2).
+The panel reads two data files: the full matrix snapshot when one exists locally (`data/matrix-index.json`, overridable with `DSH_PLUGIN_LINT_INDEX`), and the aggregate that ships in the npm package (`data/aggregate.json`, counts only). **An npm-installed panel therefore shows the ecosystem counts and marks installed plugins as uncovered; per-plugin rows need a local matrix snapshot.** The npm release is panel 0.1.5; the 0.1.6 in this checkout is unpublished.
+
+With no per-plugin data, the page still shows the matrix overview: 50 plugins across 2 DSH versions, with 80 of 100 cells active on 0.2.0-rc.2 and 72 of 100 on 0.2.1-alpha.2.
 
 ```bash
-node scripts/matrix/bundle-panel-data.mjs          # snapshot the matrix into the package
-dsh plugin --profile <profile> add <absolute path to panel/>
+node scripts/matrix/bundle-panel-data.mjs          # snapshot the local matrix into the package
+dsh plugin --profile <profile> add <path to panel/> # from a checkout
 ```
 
 It mounts on both pinned DSH versions in both compositions, and it passes this project's own linter with zero findings — only `react` comes from the browser module table, no Harness Client package is imported, and colours use `--dsw-alias-*` tokens with fallbacks.
@@ -375,13 +366,10 @@ Visual verification caught two bugs a code review had not: the page said "Runnin
 
 ## Federation
 
-Plugin authors can run the same probe from their own CI — [docs/15](docs/15-federation.md):
+Plugin authors can run the same probe from their own CI — [docs/15](docs/15-federation.md). The composite action in `.github/actions/probe/` is **not usable yet** (its `github.action_path` points at the action directory, which does not contain the scripts it calls), so today the working path is a checkout plus:
 
-```yaml
-- uses: shidesheng0218/dsh-plugin-lint/.github/actions/probe@v1
-  with:
-    target: .
-    dsh-versions: 0.2.0-rc.2,0.2.1-alpha.2
+```bash
+node scripts/probe-boot.mjs <plugin-dir> --tools --dsh 0.2.0-rc.2 --mode both
 ```
 
 Self-reported cells are never presented as ours: they are sampled, re-run, and either promoted to `verified` or marked `disputed` with both verdicts kept. A disagreement is never hidden — that is the property the rest of the matrix depends on.
@@ -393,9 +381,11 @@ Self-reported cells are never presented as ours: they are sampled, re-run, and e
 | `disputed` ⚠️ | re-run disagreed | both verdicts stay in the file; the difference is public |
 | `stale` ⏳ | older than 30 days, or a newer DSH exists | the verdict may have expired |
 
+The self-reported path is not complete: the cells and the verification report it depends on are gitignored, so a self-reported cell has no tracked route into the matrix yet. Treat the mechanism as designed-but-not-operational.
+
 ## Methodology
 
-Every round of wider sampling exposed a systematic misjudgement in the measuring, not the measured. Each correction is now load-bearing:
+Every round of wider sampling exposed a systematic misjudgement in the measuring, not the measured. Each correction is now load-bearing. The runs below are historical; their cells are gitignored and cannot be reconstructed from this repository:
 
 | Round | Scale | What it exposed | The fix |
 | --- | --- | --- | --- |
@@ -407,14 +397,14 @@ A small sample cannot find systematic bias, so widening the sample is itself a v
 
 ## Data policy
 
-This repository ships the **tool**, not the results. Any output that names a package — `reports/`, `notify/`, `matrix/cells/`, `matrix/index/`, `site/`, and the panel's matrix snapshot — is generated locally and untracked.
+This repository ships the **tool**, not the results. Any output that names a package — `reports/`, `notify/`, `matrix/cells/`, `matrix/index/`, `site/`, and the panel's per-plugin matrix snapshot — is generated locally and untracked.
 
 Two reasons, and they point the same way:
 
 1. **Naming a package is a claim about someone's work.** Doing it well means contacting that maintainer first, and that is a decision, not a default.
 2. **Verified data is only meaningful for the environment that produced it.** Whoever runs the probe gets their own answer; a snapshot from our machine is not evidence about theirs.
 
-The aggregate numbers are published, because they describe the ecosystem rather than any one maintainer: see [docs/09](docs/09-ecosystem-measurements.md).
+The aggregate counts (`panel/data/aggregate.json`) are tracked, because they describe the ecosystem rather than any one maintainer. See [docs/09](docs/09-ecosystem-measurements.md).
 
 ## Reports
 
@@ -429,15 +419,17 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # unit tests for every rule (node:test, no dependencies)
-npm run e2e:official     # zero-false-positive baseline against official packages
+npm test                 # node --test test/*.test.js: 120 cases across 9 files
+npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
 ```
 
-`npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** Extract the fixtures first:
+At this revision the suite has **120 node:test cases** (analyze-cli 12, composition 8, lint 28, panel 14, performance 8, probe 9, security 12, upgrade-plan 23, upgrade-preview 6). `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+
+`npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
 ```bash
-node scripts/extract-official-fixtures.mjs        # reads an installed DSH (asar)
-node scripts/extract-official-fixtures.mjs --limit 80
+node scripts/fetch-official-from-npm.mjs --limit 80
+node scripts/e2e-official.mjs
 ```
 
 ## License
@@ -461,31 +453,47 @@ Apache-2.0. See [NOTICE](NOTICE) for the data derived from DeepSeek Harness (MIT
 
 它不是什么：不是安全背书（干净的运行只代表没有规则命中）；也不替代旁边几个工具——doctor 管包结构、testkit 管真实宿主生命周期、trust-check 管能力披露、my-guardian 管崩了之后怎么办。
 
+静态检查与静态分析命令不需要构建、不需要配置文件、不需要网络；探针与矩阵跑批会从 npm 安装包，因此需要网络；升级规划只读本地矩阵，不发起网络请求。
+
 ### 为什么需要它
 
-生态已有 4,508 个收录插件、月增近千，但"代码写得对不对、升级后还能不能用"此前没有工具回答。2026-10-13 对已发布插件的实测：
+用于测量的生态目录快照收录 4,508 个条目（2026-10-11）。2026-10-13 对 Top 100 已发布社区插件做静态检查（分析已发布 tarball，不执行插件代码）：
 
 | 观测 | 结果 |
 | --- | --- |
-| peerDependencies 耦合了官方 Harness Client 包（Top 40） | **16 / 40（40%）** |
-| 声明了 `dsh.compatibility.dshReleases`（Top 40） | 5 / 40（13%） |
-| 从浏览器模块表加载官方 Client 包（Top 100） | **62%** |
-| 没有声明任何 DSH 兼容范围（Top 100） | **87%** |
+| 加载了官方 Harness Client 包 | **62 / 100（62%）** |
+| 声明了 `dsh.compatibility.dshReleases` | **13 / 100（13%）** |
+| 没有声明任何 DSH 兼容范围 | **87 / 100（87%）** |
+| 声明了展示图标 | 31 / 100（31%） |
+| 触发至少一条 error 级规则 | 1 / 100（1%） |
 
-这些不是代码风格问题。耦合了 `@deepseek-ai/dsh-client-*` 的插件，在宿主无通知更新这些包时会坏；没声明兼容范围的插件，升级那天就是未测试状态；`files[]` 漏掉产物的问题本地测试发现不了，发布后才出现。
+耦合了 `@deepseek-ai/dsh-client-*` 的插件，在宿主无通知更新这些包时会坏；没声明兼容范围的插件，升级那天就是未测试状态；`files[]` 漏掉产物的问题本地测试发现不了，发布后才出现。
+
+用本工具实测（2026-10-13）：
+
+| 跑批 | 结果 |
+| --- | --- |
+| 80 个官方 `@deepseek-ai/*` 包（零误报基线） | **0 error · 0 warn** · 240 info |
+| Top 100 已发布社区插件 | **1 error · 86 warn** · 240 info |
+| — 其中耦合官方 Client 包 | **62%** |
+| — 其中没有声明兼容范围 | **87%** |
+
+这些数字背后的原始产物（`reports/`、`matrix/cells/`）在本地生成、被 gitignore，干净 clone 里没有。聚合记录见 [生态测量](docs/09-ecosystem-measurements.md)，数据政策见下文。
+
+### 规则分级
+
+按"能不能可靠判定"分级，而不是按听起来多严重：error 级必须机器可判、且在官方包里从不出现；warn 级是官方文档点名的风险写法，必须附证据；info 级是提示与元数据完整性。判不准的规则不配对插件下结论——判不准就降级，或者删掉。规则编号是稳定标识，不是严重度缩写：`W3` 实际报 info，`I3` 实际报 warn。初版 12 条规则里有 3 条按字面实现会误报官方包，已按这个原则处理，详见 [详细设计](docs/06-detailed-design.md)。
+
+验收基线是 80 个官方 `@deepseek-ai/*` 包 **0 error · 0 warn**（240 条 info）：官方包是文档规范的参考实现，error 级规则命中官方包，先假定是规则的 bug。
+
+E1 的事件白名单是 281 个官方 session 事件类型（采集自官方包，其中 280 个被实际观测到）。
 
 W1 规则对应的官方文档原文：
 
 > Do not `require('@deepseek-ai/dsh-client-ui-primitives')` or load any other Harness Client package as a module … copy markup, CSS, and behavior from the primitive into the plugin.
 > — `dsh plugin-development / references/practices.md`
 
-被加载最多的官方 Client 包是 ui-primitives，有 71 个插件引用它。
-
-### 规则分级
-
-按"能不能可靠判定"分级，而不是按听起来多严重：error 级必须机器可判、且在官方包里从不出现；warn 级是官方文档点名的风险写法，必须附证据；info 级是提示与元数据完整性。判不准的规则不配对插件下结论——判不准就降级，或者删掉。初版 12 条规则里有 3 条按字面实现会误报官方包，已按这个原则处理，详见 [详细设计](docs/06-detailed-design.md)。
-
-验收基线是 80 个官方 `@deepseek-ai/*` 包 **0 error · 0 warn**：官方包是文档规范的参考实现，error 级规则命中官方包，先假定是规则的 bug。
+Top 100 里 62 个插件加载了至少一个官方 Client 包；ui-primitives 被 48 个插件引用（71 是提及它的 W1 finding 条数）。
 
 ### 探针
 
@@ -493,21 +501,29 @@ W1 规则对应的官方文档原文：
 
 两个只有实测才能发现的坑：
 
-- **退出码永远不是信号。** 挂载失败只是 warning，进程退出码仍为 0——所以探针解析 stderr。同理，安装结果也不能信退出码：200 格跑批里 26 个"安装失败"有 23 个其实装成功了，判据改为校验产物（profile 的 package.json 是否变化）。
+- **退出码永远不是信号。** 挂载失败只是 warning，进程退出码仍为 0——所以探针解析 stderr。同理，安装结果也不能信退出码：历史跑批里 26 个"安装失败"有 23 个其实装成功了，判据改为校验产物（profile 的 package.json 是否变化）。
 - **成功的哨兵是一个缺失的凭据。** 一次性环境里没有 API key，所以挂载成功的插件会以 `MISSING_CREDENTIAL` 结束。这就是信号。
+
+探针会安装并执行第三方插件代码（无沙箱），只对愿意执行的插件运行。
 
 ### 兼容性矩阵
 
-探针按网格跑：一格 = 一个插件版本 × 一个 DSH 版本 × 一种组合。228 格（57 个插件、两个 DSH 版本、headless 和 web 两种组合）的实测结果：
+探针按网格跑：一格 = 一个插件 × 一个 DSH 版本 × 一种组合。当前进版本库的快照采集于 **2026-10-16**：**50 个插件 × 2 个 DSH 版本 × 2 种组合 = 200 格**，计数在 [`panel/data/aggregate.json`](panel/data/aggregate.json)：
 
-| 状态 | 格数 | 含义 |
+| 状态 | 0.2.0-rc.2 | 0.2.1-alpha.2 |
 | --- | --- | --- |
-| active | 136 | host 半边挂载成功 |
-| awaiting-service | 31 | 该组合未提供它等待的服务（不是失败） |
-| rejected-by-host | 30 | 宿主自己拒绝安装 |
-| install-failed | 3 | 网络问题 |
+| active | 80 | 72 |
+| awaiting-service | 16 | 20 |
+| rejected-by-host | 2 | 8 |
+| install-failed | 2 | 0 |
 
-**57 个插件里 17 个在新版 DSH 上结论变差，没有一个变好**；14 个是宿主直接拒绝安装。观测到的最大系统提示词增长是 10,862 字符。聚合数字见 [生态测量](docs/09-ecosystem-measurements.md)。
+每个版本列合计 100 格（50 个插件 × headless/web）。快照只覆盖这两个固定 DSH 版本，更新的版本没有测过。
+
+矩阵及由其派生的结论有三条数据质量限制：
+
+- **记录版本 ≠ 实际加载版本。** cell 里的 `plugin.version` 是采集时从 registry 抓到的版本，而探针安装时用的是裸包名。**200 格里 23 格**记录的版本与 cell 自己记录的"实际装入版本"不一致（例如 `dsh-context` 记录 0.72.0、实际装的是 0.71.0）。cell 里的 `reproduce` 命令不带版本，今天重跑可能测到另一个发布版本。
+- **逐插件数据不在仓库里。** `matrix/cells/` 与 `matrix/index/` 被 gitignore；干净 clone 只有目标清单和聚合计数，重建需要网络、npm 与探针。
+- **旧跑批数字不引用。** 早期草稿引用的更大跑批与"变差插件数"无法从本仓库重建，本 README 不引用；原因见 [生态测量](docs/09-ecosystem-measurements.md)。
 
 ### 升级预览
 
@@ -517,22 +533,13 @@ W1 规则对应的官方文档原文：
 node scripts/upgrade-preview.mjs ~/.dsh/profiles/default
 ```
 
-```text
-Upgrade preview: 0.2.0-rc.2 -> 0.2.1-alpha.2
-
-  2 worse · 0 better · 3 unchanged · 1 not covered by the matrix
-
-  ✗  @michengai/dsh-archive-manager
-      0.2.0-rc.2: active   ->   0.2.1-alpha.2: rejected-by-host
-```
-
-矩阵没覆盖的插件报 "not covered / no data"，不是裁决；官方 bundle 计数但不预览——矩阵对它们无话可说。
+输出为示例。矩阵没覆盖的插件报 "not covered / no data"，不是裁决；官方 bundle 计数但不预览——矩阵对它们无话可说。
 
 ### 构成冲突
 
 一个插件单独能挂载，不代表它和别的插件能共存。`conflicts.mjs` 扫两个维度：矩阵格子里记录的工具名（宿主注册了什么），和每个插件 client bundle 里声明的 slot 名（代码声称要挂到哪）。任一维度撞名即为候选，再装进**同一个** profile 验证。
 
-实测（16 个插件）：工具名 **0** 撞名（118 个不同名字），**slot 名 10 个撞名**——`settings.section` 一个位置就有 3 个插件认领。工具名干净，slot 不然。
+实测（2026-10-13，16 个插件）：工具名 **0** 撞名（118 个不同名字），**slot 名 10 个撞名**——`settings.section` 一个位置就有 3 个插件认领。工具名干净，slot 不然。
 
 两个夹具插件故意撞名演示后果：各自单独装都正常（各 +1 个工具），**装在一起后，后注册的那个整个插件没有挂载**：
 
@@ -540,19 +547,41 @@ Upgrade preview: 0.2.0-rc.2 -> 0.2.1-alpha.2
 tool-beta: Error: tool "collide_probe" is already registered
 ```
 
-不是"后装的覆盖先装的"，是后装的整个被丢弃。又因为挂载失败只是 warning、退出码 0，用户可以在一个插件悄悄不干活的状态下一直用下去。详见 [构成冲突](docs/18-composition-conflicts.md)。
+不是"后装的覆盖先装的"，是后装的整个被丢弃。又因为挂载失败只是 warning、退出码 0，用户可以在一个插件悄悄不干活的状态下一直用下去。这组测量依赖被 gitignore 的矩阵 cell，且"装进同一 profile 验证"是手工步骤，不属于 v0.3 CLI。详见 [构成冲突](docs/18-composition-conflicts.md)。
 
 ### 面板
 
-[`panel/`](panel/) 是一个真实的 DSH 插件：在设置页列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，下方还有生态全景——各版本上 active / refused / awaiting 的聚合计数（只有数字，没有包名）。本文顶部的截图就是它，由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
+[`panel/`](panel/) 是一个真实的 DSH 插件：设置页里一个 **Plugin Health Center** 区块，列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，下方是各版本 active / awaiting-service / rejected-by-host / install-failed 的聚合计数（只有数字，没有包名）。本文顶部的截图由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
 
-即使一个社区插件都没装，面板也不是空表格：57 个插件 × 2 个版本的全貌，以及一眼可见的升级风险（0.2.0-rc.2 上 80% 挂载成功，0.2.1-alpha.2 上掉到 57%）。
+面板读两个数据文件：本地存在全量矩阵快照时读 `data/matrix-index.json`（可用 `DSH_PLUGIN_LINT_INDEX` 覆盖），否则读 npm 包里随附的 `data/aggregate.json`（只有计数）。**因此从 npm 安装的面板只显示聚合数据，逐插件矩阵列需要本地快照。** npm 上的面板版本是 0.1.5；本工作区的 0.1.6 未发布。
 
-它用这个项目的 linter 检查自己是 0 发现：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
+没有逐插件数据时，页面仍展示矩阵全景：50 个插件 × 2 个版本，0.2.0-rc.2 上 100 格里 80 格 active，0.2.1-alpha.2 上 72 格 active。
+
+它用这个项目的 linter 检查自己是 0 发现（11 checks）：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
+
+### v0.3 分析能力（experimental，未发布）
+
+工作区版本 0.3.0；npm 最新发布是 0.1.0。下面四个能力（`full` 是组合命令）只在源码 checkout 里存在，且都是 **experimental**：对磁盘文件做静态启发式检查，不执行插件、不做运行时测量、不做安全裁决。干净运行只代表没有模式命中。
+
+| 命令 | 回答的问题 |
+| --- | --- |
+| `dsh-plugin-analyze conflicts <dir...>` | 两个以上插件是否抢同一个 slot / 工具名 / 路由 / 配置键 |
+| `dsh-plugin-analyze performance <dir>` | 包体积与静态"看起来重"的模式有多少 |
+| `dsh-plugin-analyze security <dir>` | 哪些模式值得人工先看一眼 |
+| `dsh-plugin-analyze full <dir>` | 单包的 lint + performance + security |
+| `dsh-plugin-upgrade-plan ...` | 给定 profile 与目标 DSH 版本，哪些插件需要处理 |
+
+四个 `analyze` 子命令都支持 `--json`（stdout 纯 JSON，诊断信息写 stderr）与 `--exit-code`；`--help` 退出 0，未知选项退出 2，目录缺 package.json 退出 2。带 `--exit-code` 时：`conflicts` 有冲突退 1，`security` 有 warn 级 finding 退 1（info 级清单不触发门禁），`full` 在 lint 有 error 或 security 有 warn 级 finding 时退 1，`performance` 始终退 0（评分不是门禁）。
+
+安全分析 S1–S10 全部是 warn/info，没有 error：这些模式不是机器可判的。性能评分 0–100 是按固定阈值扣分得到的启发式指标，静态计数而非运行时测量；没有可分析的 JS 时 score 为 0、rating 为 insufficient-data。冲突检测是静态模式匹配，只认得解析器覆盖的注册写法，漏报可能出现；运行时权威是装进同一 profile 的 `scripts/matrix/conflicts.mjs`。
+
+`dsh-plugin-upgrade-plan` 读 profile 已装 bundle 与本地矩阵（默认 `matrix/cells`，可用 `--matrix <dir>` 指定），不访问网络、不查 npm 新版本；分析模式退出码 0 无需动作 / 1 需更新或无兼容版本 / 2 运行失败（含无矩阵数据）；`--check-compatibility` 0 兼容 / 1 不兼容 / 2 未知或无数据。矩阵不在 npm 包内且 `matrix/cells/` 被 gitignore，覆盖范围是快照里的 50 个插件。
+
+API 见 [docs/19](docs/19-analysis-tools.md)，未发布版本的 release notes 见 [docs/20](docs/20-release-0.3.0.md)。
 
 ### 联邦机制
 
-插件作者可以在自己的 CI 里跑同一个探针（见 [联邦机制](docs/15-federation.md)）。自报的格子不会被当成我们的结论：会被抽样复跑，一致就升级为 verified，不一致就标 disputed 且**两个结论都保留**。分歧不会被掩盖——这是矩阵其余部分值得信任的前提。
+插件作者可以在自己的 CI 里跑同一个探针（见 [联邦机制](docs/15-federation.md)）。注意 `.github/actions/probe/` 里的 composite action 目前不可用（`github.action_path` 指向 action 目录，目录里没有它要调用的脚本），当前可行路径是 checkout 本仓库后直接跑 `node scripts/probe-boot.mjs`。自报的格子不会被当成我们的结论：会被抽样复跑，一致就升级为 verified，不一致就标 disputed 且**两个结论都保留**。分歧不会被掩盖——这是矩阵其余部分值得信任的前提。
 
 | 信任级别 | 来源 | 含义 |
 | --- | --- | --- |
@@ -561,32 +590,45 @@ tool-beta: Error: tool "collide_probe" is already registered
 | disputed ⚠️ | 复跑结果与自报不一致 | 两个结论都留在文件里，差异公开 |
 | stale ⏳ | 超过 30 天，或 DSH 已发新版 | 结论可能过期 |
 
+自报路径目前不完整：它依赖的 cell 与复验报告都被 gitignore，自报结论还没有进版本库的通道。这一机制算"设计存在、尚未跑通"。
+
 ### 数据政策
 
-仓库只发工具，不发点名结果——凡是会点名具体包的数据（`reports/`、`matrix/cells/`、`notify/`、`site/`、面板的矩阵快照）都在本地生成、不进版本库。原因有两条：
+仓库只发工具，不发点名结果——凡是会点名具体包的数据（`reports/`、`matrix/cells/`、`notify/`、`site/`、面板的逐插件矩阵快照）都在本地生成、不进版本库。原因有两条：
 
 1. 点名一个包是对他人工作的公开断言——做对的做法是先通知维护者，这是一个决定，不是默认值；
 2. 验证数据只对产生它的环境有意义——谁跑探针，数据就是谁的答案；我们机器上的快照不是关于别人环境的证据。
 
-生态聚合数字照常发布，因为它描述的是生态而不是某个维护者，见 [生态测量](docs/09-ecosystem-measurements.md)。
+聚合计数（`panel/data/aggregate.json`）进版本库，因为它描述的是生态而不是某个维护者，见 [生态测量](docs/09-ecosystem-measurements.md)。
 
 ### 用法
 
+npm 发布版本是 **0.1.0**（2026-10-14 发布）。本工作区是 **0.3.0，未发布**；下文的分析命令只在源码 checkout 里存在。
+
 ```bash
-npx @shidesheng0218/dsh-plugin-lint .            # 体检当前目录的插件
+npx @shidesheng0218/dsh-plugin-lint .            # 体检当前目录的插件（npm 0.1.0）
 npx @shidesheng0218/dsh-plugin-lint . --json     # 机器可读报告
 npx @shidesheng0218/dsh-plugin-lint . --exit-code  # 有 error 级发现时退出码为 1
 node scripts/probe-boot.mjs <插件名> --tools      # 实测挂载，读工具清单与提示词成本
 node scripts/matrix/run.mjs --targets matrix/targets-top50.json   # 重跑兼容矩阵
+node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkout）
 ```
 
 退出码：`0` 正常 · `1` 有 error 级发现（配合 `--exit-code`）· `2` 本次运行失败。
 
-本 README 里以 `node scripts/` 开头的命令需要**克隆本仓库**运行——矩阵跑批、升级预览、报告生成都依赖 npm 包里不包含的文件。npm 包提供的是 linter CLI、探针（也可用 `dsh-plugin-probe`）和库。
+本 README 里以 `node scripts/` 开头的命令需要**克隆本仓库**运行——矩阵跑批、升级预览、探针与报告生成都依赖 npm 包里不包含的文件。
+
+### 测试
+
+```bash
+npm test   # node --test test/*.test.js：120 个用例，9 个文件
+```
+
+当前 revision 的实测：120 个 `node:test` 用例（analyze-cli 12、composition 8、lint 28、panel 14、performance 8、probe 9、security 12、upgrade-plan 23、upgrade-preview 6），普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 
-[生态调研](docs/01-ecosystem-map.md) · [决策记录](docs/05-decision-log.md) · [详细设计](docs/06-detailed-design.md) · [M1 结果](docs/07-m1-results.md) · [作者通知](docs/08-author-notification.md) · [生态测量](docs/09-ecosystem-measurements.md) · [探针验证](docs/10-m4-verification.md) · [能力探针](docs/11-m4-capability-probe.md) · [联邦机制](docs/15-federation.md) · [面板](docs/16-m5-panel.md) · [发布记录](docs/17-release.md) · [构成冲突](docs/18-composition-conflicts.md)
+[生态调研](docs/01-ecosystem-map.md) · [决策记录](docs/05-decision-log.md) · [详细设计](docs/06-detailed-design.md) · [M1 结果](docs/07-m1-results.md) · [作者通知](docs/08-author-notification.md) · [生态测量](docs/09-ecosystem-measurements.md) · [探针验证](docs/10-m4-verification.md) · [能力探针](docs/11-m4-capability-probe.md) · [联邦机制](docs/15-federation.md) · [面板](docs/16-m5-panel.md) · [发布记录](docs/17-release.md) · [构成冲突](docs/18-composition-conflicts.md) · [分析工具](docs/19-analysis-tools.md) · [v0.3.0 release notes（draft）](docs/20-release-0.3.0.md)
 
 ## License / 许可证
 

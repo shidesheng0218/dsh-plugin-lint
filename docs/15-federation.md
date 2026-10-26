@@ -1,6 +1,6 @@
 # 15 · 联邦式：作者怎么自己跑，结果怎么进矩阵
 
-## 1. 作者侧：一个 action，一次 PR 评论
+## 1. 作者侧：一个 workflow（当前 action 不可用）
 
 插件仓库里加一个 workflow（[action.yml](../.github/actions/probe/action.yml)）：
 
@@ -21,7 +21,9 @@ jobs:
           comment: 'true'           # 在 PR 上贴结论
 ```
 
-产出：```matrix-cells/<插件>/<DSH 版本>[+web].json```（作为 artifact 上传），以及一份 markdown 摘要。
+产出：`matrix-cells/<插件>/<DSH 版本>[+web].json`（作为 artifact 上传），以及一份 markdown 摘要。
+
+**当前 action 不可用**：`action.yml` 用 `${{ github.action_path }}/scripts/matrix/run.mjs` 定位脚本，但 `github.action_path` 指向 action 目录，目录里只有 `action.yml`；另外 `tee` 在 `mkdir -p` 之前执行。作者现在要在 CI 里用探针，只能 checkout 本仓库后跑 `node scripts/probe-boot.mjs`（见 §6）。
 
 **不需要 API key**：桩 provider 是本地的，只用来读取宿主发出的真实请求。
 
@@ -42,26 +44,30 @@ jobs:
 | `disputed` | 抽检结果与自报不一致 | ⚠️ | **两个结论都留在文件里**，差异公开 |
 | `stale` | 超过 30 天，或 DSH 已发新版 | ⏳ | 结论可能过期 |
 
-抽检策略：每周对 `self-reported` 随机抽 20%（种子=运行序号，可复现），跑 [verify.mjs](../scripts/matrix/verify.mjs)：
+抽检策略：每周对 `self-reported` 随机抽 20%（种子=运行序号），跑 [verify.mjs](../scripts/matrix/verify.mjs)：
 
 - 一致 → 升级为 `verified`，并顺手刷新工具清单；
 - 不一致 → 标记 `disputed`，把 `{reported, observed}` 一起写进 cell。
 
 **不一致不会被掩盖**，这是这套机制能不能被信任的关键。
 
-## 4. 本仓库的三个 workflow
+**当前状态：这是一条没有跑通的设计。** cell 与复验报告 `matrix/index/verification.json` 都被 gitignore，`verify-sample.yml` 因此每次都提前退出（没有可提交的 tracked 变更），自报 cell 也没有进入版本库的通道。需要时只能在本地产物上手动复验。
+
+## 4. 本仓库的 workflow（当前 5 个）
 
 | 文件 | 触发 | 作用 |
 | --- | --- | --- |
-| [ci.yml](../.github/workflows/ci.yml) | push / PR | 单测 + 从 npm 拉官方包做零误报基线 |
-| [matrix-refresh.yml](../.github/workflows/matrix-refresh.yml) | 每周一 | 重跑 Top 50，开 PR 提交变化的 cell |
-| [verify-sample.yml](../.github/workflows/verify-sample.yml) | 每周三 | 抽检自报 cell，开 PR 提交复验结果 |
+| [ci.yml](../.github/workflows/ci.yml) | push / PR | 单测 + 从 npm 拉官方包做零误报基线 + 自检 panel |
+| [matrix-refresh.yml](../.github/workflows/matrix-refresh.yml) | 每周一 | 重跑 Top 50，开 PR 提交聚合数据（cells 被 gitignore，只作为 artifact 上传） |
+| [verify-sample.yml](../.github/workflows/verify-sample.yml) | 每周三 | 抽检自报 cell |
+| [publish-lint.yml](../.github/workflows/publish-lint.yml) | main 上 lint 相关路径变更 | 测试 + token 预检 + 需要时 bump + `npm publish` |
+| [publish-panel.yml](../.github/workflows/publish-panel.yml) | main 上 `panel/**` 变更 | 同上，发布 panel |
 
-三个 workflow 都用 `gh` 开 PR，不依赖第三方 action。
+前三个 CI workflow 用 `gh` 开 PR，不依赖第三方 action。两个 publish workflow 的**发布结果**见 [docs/17](17-release.md)：panel 0.1.6 的 bump 进了 main 但 registry 没有 0.1.6，自动发布没有被证明可靠。
 
 ## 5. 已实测（2026-10-13，GitHub Actions / ubuntu-latest）
 
-三个 workflow 全部真跑过：
+当时存在的三个 CI workflow 全部真跑过（publish workflow 是 2026-10-21 之后才加的，见 [docs/17](17-release.md)）：
 
 | workflow | 结果 |
 | --- | --- |
@@ -84,8 +90,9 @@ dsh-mnemon x 0.2.0-rc.2 [headless]
 
 ## 6. 诚实的限制
 
+- **作者侧 composite action 目前不可用**：[action.yml](../.github/actions/probe/action.yml) 用 `${{ github.action_path }}/scripts/matrix/run.mjs` 定位脚本，但 `github.action_path` 指向 action 目录，目录里并没有 `scripts/`（只有 action.yml）。作者要用探针，目前得从本仓库 checkout 直接跑 `node scripts/probe-boot.mjs`。
 - **web 组合需要 pnpm 与网络**：CI 里用 `pnpm/action-setup`，装插件时访问 npm registry。
-- **客户端半边仍不覆盖**：见 [10](10-m4-verification.md) §5，action 的摘要里也写了这句。
+- **客户端半边仍不覆盖**：见 [10](10-m4-verification.md) §5。
 - **大插件慢**：单格 2–180 秒（`@roarpeng/graphflow` 依赖 `onnxruntime-node`，实测 183 秒）。
 
 ## 7. 为什么值得作者跑

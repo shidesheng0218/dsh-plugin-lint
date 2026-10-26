@@ -1,45 +1,57 @@
 # 09 · 生态测量结果（只含聚合数字）
 
-**本文只发布聚合数字，不点名任何包。** 逐包结论（reports/、notify/、matrix/cells/）在本地生成、不进仓库，原因见 [README](../README.md#data-policy)。
+**本文只发布聚合数字，不点名任何包。** 逐包结论（`reports/`、`notify/`、`matrix/cells/`）在本地生成、不进仓库，原因见 [README](../README.md#data-policy)。
 
-测量时间 2026-10-13 · 工具 dsh-plugin-lint 0.0.1 · 目录快照 dsh-plugin-catalog@2026.1012.5076 · DSH 0.2.0-rc.2 与 0.2.1-alpha.2
+两组快照，采集时间不同：
 
-## 1. 静态检查：Top 100 已发布插件
+| 快照 | 时间 | 规模 |
+| --- | --- | --- |
+| 静态检查 | 2026-10-13 | Top 100 已发布社区插件，工具 `dsh-plugin-lint` 0.0.1，目录快照 `dsh-plugin-catalog@2026.1012.5076` |
+| 兼容矩阵 | 2026-10-16（`generatedAt 2026-10-16T02:45:50Z`） | 50 个插件 × 2 个 DSH 版本 × 2 种组合 = 200 格 |
+
+**所有原始产物都被 gitignore**：静态检查的 `reports/`、矩阵的 `matrix/cells/` 与 `matrix/index/` 都不在版本库里，干净 clone 无法重建。本文数字是本地跑批的聚合记录，不是"任何人都能原样复跑"的证明。版本库里的矩阵产物只有聚合计数 `panel/data/aggregate.json`（无包名）。
+
+## 1. 静态检查：Top 100 已发布插件（2026-10-13）
 
 | 结论 | 占比 |
 | --- | --- |
-| 与官方 Harness Client 包耦合 | **62%** |
-| 声明了 DSH 兼容版本 | 13% |
-| **没有声明兼容版本** | **87%** |
-| 声明了展示图标 | 31% |
-| 触发 error 级规则 | 1% |
+| 与官方 Harness Client 包耦合（W1） | **62 / 100（62%）** |
+| 声明了 DSH 兼容版本（I1） | 13%（13 / 100） |
+| **没有声明兼容版本** | **87%（87 / 100）** |
+| 声明了展示图标 | 31%（31 / 100） |
+| 触发 error 级规则 | 1%（1 / 100，E1：白名单外的 append 类型） |
 
-被加载最多的官方 Client 包是 ui-primitives（71 个插件引用）。**兼容声明率在 Top 40 与 Top 100 两次独立测量中都稳定在 13%** —— 这个数字可信，也正是兼容矩阵存在的理由。
+该轮共 327 条 finding，按严重度是 **1 error · 86 warn · 240 info**；按规则是 E1 1 · W1 86 · I1 87 · I2 136 · W3 17。info 的 240 条由 I1 87 + I2 136 + W3 17 组成。
 
-## 2. 兼容矩阵：57 个插件 × 2 个 DSH 版本 × 2 种组合 = 228 格
+被加载最多的官方 Client 包是 `@deepseek-ai/dsh-client-ui-primitives`：**去重后 48 个插件引用它**；71 是提及它的 W1 finding 条数（同一插件的代码与 manifest 依赖可以各产生一条），两者不是同一个数——早期文档把 finding 次数当成了插件数。
 
-| 状态 | 格数 | 含义 |
+13% 的兼容声明率就是这个快照的直接结论：87% 的头部插件没有声明任何 DSH 兼容范围。测量工具是 0.0.1，早于当前工作区 0.3.0，数字是快照记录，不是用当前工具重跑的结果。
+
+## 2. 兼容矩阵：50 个插件 × 2 个 DSH 版本 × 2 种组合 = 200 格（2026-10-16）
+
+状态计数（来自 `panel/data/aggregate.json`，每个版本列 100 格 = 50 插件 × headless/web）：
+
+| 状态 | 0.2.0-rc.2 | 0.2.1-alpha.2 |
 | --- | --- | --- |
-| active | 136 | host 半边挂载成功 |
-| awaiting-service | 31 | 该组合未提供它等待的服务（headless 缺 web 侧服务） |
-| rejected-by-host | 30 | **宿主自己拒绝安装**，理由含 peerDependencies 与目标版本 |
-| install-failed | 3 | 网络问题（原生包下载失败） |
+| active | 80 | 72 |
+| awaiting-service | 16 | 20 |
+| rejected-by-host | 2 | 8 |
+| install-failed | 2 | 0 |
 
-### 升级风险
+### 版本间的计数变化
 
-**17 / 57 个插件在更新的 DSH 版本上结论变差，没有一个变好。** 其中 14 个是宿主直接拒绝安装，且拒绝集中在 alpha 版本（30/32 格），两种组合结论一致、可复现。
+同一批 cell 在两个固定 DSH 版本上的聚合变化：active 从 80 降到 72，rejected-by-host 从 2 升到 8，awaiting-service 从 16 升到 20，install-failed 从 2 降到 0。**这是 cell 级计数，不是插件级结论**：一个插件有两种组合，cell 变化不能直接换算成"多少个插件变差"。旧文档里的"逐插件结论变差"数字来自一次更大的跑批，那次数据无法从本仓库重建（cells 被 gitignore），本文不引用为当前结论。
 
-### 能力与成本（此前无处可查）
+### 数据质量限制（必须和数字一起读）
 
-| 项 | 观测值 |
-| --- | --- |
-| 注册工具最多的插件 | **+34 个工具** |
-| 系统提示词增长最大 | **+10,862 字符** |
-| 跨平台差异（Linux vs macOS 同一格） | 状态、工具清单、包清单**完全一致**；提示词字符数差 4（含 runner 路径），故字符数是近似量 |
+1. **记录版本 ≠ 实际加载版本。** cell 里的 `plugin.version` 是采集时从 registry 抓到的版本，但探针安装时用的是裸包名。**200 格中 23 格**的记录版本与 cell 自己记录的"实际装入版本"不一致（例如 `dsh-context` 记录 0.72.0、实际装 0.71.0）。cell 的 `reproduce` 命令不带版本，今天重跑可能测到另一个发布版本。
+2. **干净 clone 不能重建。** `matrix/cells/` 与 `matrix/index/` 被 gitignore；版本库里只有目标清单（`matrix/targets*.json`）、版本钉（`matrix/versions.json`）与聚合计数（`panel/data/aggregate.json`）。
+3. **版本覆盖旧。** 快照只钉 `0.2.0-rc.2` 与 `0.2.1-alpha.2` 两个 DSH 版本；更新宿主版本的 cell 不存在。
+4. **逐 cell 的能力/成本数字不再单列。** 注册工具数、系统提示词字符数在 `matrix/cells` 里，属于被 gitignore 的逐包数据；需要时用本地快照重算，本文不发布这些数字的聚合极值。
 
 ## 3. 方法学：每一轮扩样都暴露一个系统性误判
 
-这是本项目最有价值的部分，也是"先扩样再对外"这个顺序的理由。
+这是本项目最有价值的部分，也是"先扩样再对外"这个顺序的理由。下表是**历史跑批**的记录；产生它们的 cell 不在版本库里，无法从干净 clone 重建。
 
 | 轮次 | 规模 | 暴露的问题 | 修正 |
 | --- | --- | --- | --- |
@@ -49,16 +61,21 @@
 
 **结论：小样本发现不了系统性偏差，扩样本身就是验证手段。** 每条规则、每个状态判据都必须在真实数据上跑过才允许对外。
 
-## 4. 点名数据的处理
+## 4. 可复现性
+
+需要网络、npm 与 pnpm；产物默认写进被 gitignore 的目录：
+
+```bash
+node scripts/lint-npm-packages.mjs <包名...>                       # 静态检查任意已发布插件
+node scripts/matrix/run.mjs --targets matrix/targets-top50.json   # 重跑矩阵（会安装并执行第三方包）
+node scripts/matrix/site.mjs && node scripts/matrix/bundle-panel-data.mjs
+node scripts/build-report.mjs --top 100                            # 静态检查报告
+```
+
+跑批结果属于跑探针的人：谁跑，数据就是谁的答案；本文的数字只对应上面标注的时间与快照。
+
+## 5. 点名数据的处理
 
 仓库里出现过的逐包结论已从 **git 历史**中移除（不只是工作区）。原因是这些内容会对具体维护者形成公开点名，而项目选择先不这么做。
 
-需要时任何人都能在本地重建同样的数据：
-
-```bash
-node scripts/lint-npm-packages.mjs <包名...>        # 静态检查任意已发布插件
-node scripts/matrix/run.mjs --targets matrix/targets-top50.json   # 重跑矩阵
-node scripts/matrix/site.mjs && node scripts/matrix/bundle-panel-data.mjs
-```
-
-**数据属于跑探针的人，不属于这个仓库。**
+需要时任何人都能在本地重建同样的数据（命令见 §4）。**数据属于跑探针的人，不属于这个仓库。**
