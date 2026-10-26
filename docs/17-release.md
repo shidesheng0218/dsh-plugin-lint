@@ -86,3 +86,22 @@ npx @shidesheng0218/dsh-plugin-lint . --no-color
 ```bash
 npm publish --otp=<验证器当前 6 位码>
 ```
+
+## 7. 自动发布（2026-10-21 起）
+
+两个 workflow 接管发版，触发条件是 main 上对应目录有变更：
+
+| workflow | 触发路径 | 发布对象 |
+| --- | --- | --- |
+| `publish-lint.yml` | `src/` `bin/` `scripts/lib/` `scripts/probe-boot.mjs` `package.json` | `@shidesheng0218/dsh-plugin-lint` |
+| `publish-panel.yml` | `panel/` | `@shidesheng0218/dsh-plugin-lint-panel` |
+
+共同行为：
+
+- 先跑 `npm test`，再跑 `npm whoami` 校验 token；**校验失败在 bump 之前停下**，不会留下没发布的版本号
+- 当前版本已在 npm 上时自动 bump patch，把 bump 提交推回 main，并用提交标题前缀让本次 job 跳过自己
+- `npm publish --provenance`（需要仓库公开 + `id-token: write`）
+
+必需的前置条件：仓库 secret `NPM_TOKEN`，值为 npm **Automation** token（绕过 2FA）。未配置时的报错是 `ENEEDAUTH`。
+
+矩阵数据每周刷新（`matrix-refresh.yml`）会跑 `bundle-panel-data.mjs`，把聚合数据写进 `panel/data/aggregate.json`；PR 合并后即触发 `publish-panel`，数据刷新到用户手里不需要人工介入。
