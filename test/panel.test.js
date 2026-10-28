@@ -73,13 +73,14 @@ const withNoProfile = (fn) => {
 };
 
 test('the panel reports the installed version of every selected bundle', () => {
-  const dir = profile([{ name: 'covered-plugin', version: '9.9.9' }, { name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
+  const dir = profile([{ name: 'covered-plugin', version: '1.0.0' }, { name: '@deepseek-ai/dsh-base', version: '0.2.0-rc.2' }]);
   withProfile(dir, () => {
     const data = panel.payload();
     assert.equal(data.ok, true);
+    assert.equal(data.schemaVersion, 2);
     assert.equal(data.rows.length, 2);
     const row = data.rows.find((r) => r.name === 'covered-plugin');
-    assert.equal(row.version, '9.9.9', 'the installed version wins over the bundle spec');
+    assert.equal(row.version, '1.0.0', 'the installed version wins over the bundle spec');
     assert.equal(row.known, true, 'a plugin in the snapshot is marked as covered');
     assert.equal(row.cells.length, 2);
     assert.deepEqual(row.cells.map((c) => c.status), ['active', 'rejected-by-host']);
@@ -147,12 +148,21 @@ test('a missing snapshot leaves every plugin uncovered instead of failing', () =
   }
 });
 
-test('a verified cell older than the staleness window is reported as stale', () => {
+test('legacy cells are shown as legacy-unpinned, not as current verified evidence', () => {
   const dir = profile([{ name: 'covered-plugin', version: '1.0.0' }]);
   withProfile(dir, () => {
     const row = panel.payload().rows.find((r) => r.name === 'covered-plugin');
-    // The fixture cells are dated 2026-01-01, long past the 30-day window.
-    assert.deepEqual(row.cells.map((c) => c.trust), ['stale', 'stale']);
+    assert.deepEqual(row.cells.map((c) => c.trust), ['legacy-unpinned', 'legacy-unpinned']);
+  });
+});
+
+test('a different installed version cannot borrow cells from another version', () => {
+  const dir = profile([{ name: 'covered-plugin', version: '9.9.9' }]);
+  withProfile(dir, () => {
+    const row = panel.payload().rows.find((r) => r.name === 'covered-plugin');
+    assert.equal(row.known, false);
+    assert.deepEqual(row.cells, []);
+    assert.equal(row.health.state, 'unverified');
   });
 });
 
@@ -160,10 +170,14 @@ test('a recent verified cell keeps its trust', () => {
   const saved = process.env.DSH_PLUGIN_LINT_INDEX;
   const fresh = {
     ...FIXTURE_INDEX,
+    schemaVersion: 2,
     plugins: [{
       name: 'covered-plugin',
-      version: '1.0.0',
-      cells: [{ dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', at: new Date().toISOString(), toolsAdded: [], reproduce: '' }],
+      versions: [{
+        version: '1.0.0',
+        integrity: 'sha512-test',
+        cells: [{ dsh: '0.2.0-rc.2', status: 'active', trust: 'verified', at: new Date().toISOString(), toolsAdded: [], reproduce: '' }],
+      }],
     }],
   };
   const freshPath = join(indexDir, 'fresh-index.json');
