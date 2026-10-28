@@ -19,6 +19,8 @@ export function createCell(input) {
       integrity: artifact.integrity,
       local: artifact.local === true,
       sourceDigest: artifact.sourceDigest,
+      path: artifact.path,
+      tarballUrl: artifact.tarballUrl,
     },
     dsh: { version: dsh.version, source: dsh.source || dsh.kind || 'npm', composition },
     probe: {
