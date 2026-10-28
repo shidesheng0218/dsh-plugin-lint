@@ -2,6 +2,14 @@
 
 A DeepSeek Harness settings section — **Plugin Health Center** — that lists the plugins installed in this profile and how each one fares across DSH versions, read from the compatibility matrix.
 
+## Payload v2 and route security
+
+The host is split into `profile/`, `matrix/`, `payload/`, `update/`, `actions/`, and `routes/`. The main payload uses `schemaVersion: 2` and never waits for the registry; update checks are a separate `POST /api/dsh-plugin-lint/panel/update` request with a 4-second timeout and a 6-hour cache. Aggregate-only installs still include counts, snapshot date, and source run id. Legacy cells are labelled `legacy-unpinned` and cannot justify an upgrade recommendation.
+
+Action requests require `content-type: application/json`, `x-dsh-plugin-lint-action: 1`, `confirmed: true`, a valid package name, and an installed exact version. The panel itself and first-party bundles are protected server-side. Execution uses `execFile`, a per-profile lock, and a sanitized audit (no env, argv, stdout, stderr, or tokens).
+
+**DSH authentication evidence:** the supported `@deepseek-ai/dsh-client-connection` packages at `0.2.0-rc.2` and `0.2.1-alpha.2` implement a signed, authority-bound browser cookie (`lib/index.js`, `BrowserAuth`) and a Host/Origin request fence (`isTrustedApiRequest`). A missing `Origin` is explicitly accepted by that implementation, so it is not treated as a vulnerability here. When `Origin` is present, this panel requires the same host, and also enforces JSON, the custom action header, confirmation, and installation state.
+
 ## What it shows
 
 | Column / block | Meaning |

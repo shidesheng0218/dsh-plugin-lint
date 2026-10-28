@@ -19,6 +19,8 @@
     "client.js",
     "icon.svg",
     "locale/*.json",
+    "host/",
+    "shared/",
     "data/aggregate.json",
     "cordis.patch.yml",
     "README.md"
