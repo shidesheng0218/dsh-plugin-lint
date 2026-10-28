@@ -21,7 +21,7 @@ jobs:
           node-version: '22'
 
       - name: Re-run a sample of self-reported cells
-        run: node scripts/matrix/verify.mjs --sample 0.2 --seed ${{ github.run_number }} --concurrency 2
+        run: node scripts/matrix/verify.mjs --sample 0.2 --seed ${{ github.run_number }} --concurrency 2 --workflow verify-sample --run-id ${{ github.run_id }} --run-url ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Upload the verification candidate
         uses: actions/upload-artifact@v4
@@ -29,3 +29,44 @@ jobs:
           name: verification-candidate
           path: matrix/index/verification.json
           if-no-files-found: error
+
+  publish:
+    needs: probe
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: verification-candidate
+          path: candidate
+
+      - name: Apply trusted verification offline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          checked=$(node -e "const fs=require('fs'); process.stdout.write(String(JSON.parse(fs.readFileSync('candidate/verification.json','utf8')).checked))")
+          if [ "$checked" = "0" ]; then
+            echo "no self-reported cells to verify; no empty PR"
+            exit 0
+          fi
+          node scripts/matrix/verify-public.mjs --source matrix/public --verification candidate/verification.json
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no verification change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="matrix/verify-${{ github.run_id }}"
+          git checkout -b "$branch"
+          git add matrix/public
+          git commit -m "chore(matrix): verification sample"
+          git push origin "HEAD:$branch"
+          gh pr create --title "chore(matrix): verification sample" --body "Trusted CI verification applied offline. Disputed evidence keeps both observations; review before merging." --base "${{ github.event.repository.default_branch }}" --head "$branch"

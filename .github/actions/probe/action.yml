@@ -1,5 +1,5 @@
 name: 'DSH plugin probe'
-description: 'Install a DeepSeek Harness plugin into a throwaway profile and report what the host does with it.'
+description: 'Install a DeepSeek Harness plugin into an isolated throwaway profile and report what the host does with it.'
 author: 'dsh-plugin-lint'
 branding:
   icon: 'check-circle'
@@ -47,25 +47,21 @@ runs:
       with:
         node-version: '22'
 
-    - name: Set up pnpm
-      uses: pnpm/action-setup@v4
-      with:
-        version: '10'
-
     - name: Probe
       shell: bash
       env:
         TOOLS_FLAG: ${{ inputs.tools == 'true' && '--tools' || '--no-tools' }}
       run: |
         set -euo pipefail
-        node "${{ github.action_path }}/scripts/matrix/run.mjs" \
+        mkdir -p "${{ inputs.out }}"
+        node "${{ github.action_path }}/../../../scripts/matrix/run.mjs" \
           --plugins "${{ inputs.target }}" \
           --dsh "${{ inputs.dsh-versions }}" \
           --mode "${{ inputs.mode }}" \
+          --target-mode refresh-latest \
           --out "${{ inputs.out }}" \
           --cache "${{ runner.temp }}/dsh-matrix-cache" \
           "$TOOLS_FLAG" | tee "${{ inputs.out }}/probe.log"
-        mkdir -p "${{ inputs.out }}"
         {
           echo "## DSH plugin probe"
           echo
