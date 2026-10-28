@@ -194,19 +194,39 @@ test('security --json reports findings and --exit-code gates on them', async (t)
   assert.equal(ungated.code, 0, 'without --exit-code findings do not fail the run');
 });
 
-test('full --json combines lint, performance and security in one object', async (t) => {
+test('full --json combines v2 experiments with a nested lint v1 report', async (t) => {
   const root = tempRoot(t);
   const dir = cleanPackage(root);
 
   const { code, stdout } = await run(['full', dir, '--json', '--exit-code']);
   assert.equal(code, 0);
   const report = JSON.parse(stdout);
-  assert.deepEqual(Object.keys(report).sort(), ['experimental', 'lint', 'performance', 'security', 'target']);
+  assert.deepEqual(Object.keys(report).sort(), ['experimental', 'lint', 'performance', 'schemaVersion', 'security', 'target']);
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.lint.schemaVersion, 1);
+  assert.equal(report.performance.schemaVersion, 2);
+  assert.equal(report.security.schemaVersion, 2);
   assert.equal(report.experimental, true);
   assert.equal(report.target.name, 'clean-plugin');
   assert.equal(report.lint.summary.error, 0);
   assert.equal(typeof report.performance.score, 'number');
   assert.deepEqual(report.security.findings, []);
+});
+
+test('the root entry keeps only the ten stable core exports', async () => {
+  const api = await import('../src/index.js');
+  assert.deepEqual(Object.keys(api).sort(), [
+    'DOC',
+    'EVENT_TYPES',
+    'RULES',
+    'filesCover',
+    'formatText',
+    'lintPackage',
+    'loadPackage',
+    'maskSource',
+    'toBadge',
+    'toSarif',
+  ]);
 });
 
 test('full --exit-code gates on a lint error or a security finding', async (t) => {

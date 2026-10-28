@@ -14,9 +14,7 @@
 
 import { loadPackage } from '../src/load.js';
 import { lintPackage } from '../src/index.js';
-import { detectConflicts } from '../src/composition.js';
-import { analyzePerformance } from '../src/performance.js';
-import { analyzeSecurityDeep } from '../src/security.js';
+import { detectConflicts, analyzePerformance, analyzeSecurityDeep, EXPERIMENTAL_SCHEMA_VERSION } from '../src/experimental/index.js';
 
 const USAGE = [
   'dsh-plugin-analyze — experimental static analysis for DeepSeek Harness plugins',
@@ -132,6 +130,7 @@ function analyzeFullTarget(dir) {
   const pkg = loadTarget(dir);
   const lint = lintPackage(dir);
   return {
+    schemaVersion: EXPERIMENTAL_SCHEMA_VERSION,
     target: targetOf(pkg, dir),
     lint,
     performance: analyzePerformance(pkg),
