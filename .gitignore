@@ -13,3 +13,5 @@ panel/data/matrix-index.json
 reports/
 site/
 matrix-index*.tmp
+.export-*/
+.sync-*/

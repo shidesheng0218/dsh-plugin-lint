@@ -19,7 +19,7 @@ const argOf = (name, fallback) => {
   const i = argv.indexOf(name);
   return i >= 0 ? argv[i + 1] : fallback;
 };
-const VALUE_FLAGS = ['--to', '--index'];
+const VALUE_FLAGS = ['--to', '--index', '--composition'];
 const positional = argv.filter((a, i) => !a.startsWith('--') && !VALUE_FLAGS.includes(argv[i - 1]));
 
 if (positional.length === 0) {
@@ -61,13 +61,21 @@ if (!versions.includes(target)) {
 // older version to a newer one).
 const current = versions[0];
 
-// Same ranking as the site generator: one cell per composition, and only the
-// most favourable verdict is shown — "awaiting webServer" in headless and
-// "active" in web are both true, and only together do they mean anything.
-const RANK = { active: 0, 'awaiting-service': 1, 'rejected-by-host': 2, 'inactive-error': 3, 'boot-failed': 4, 'install-failed': 5 };
-const best = (cells, version) => {
-  const own = cells.filter((c) => c.dsh === version);
-  return own.slice().sort((a, b) => (RANK[a.status] ?? 9) - (RANK[b.status] ?? 9))[0];
+const composition = argOf('--composition', manifest.dsh?.profile?.composition);
+if (composition && !['headless', 'web'].includes(composition)) {
+  console.error('--composition must be headless or web');
+  process.exit(2);
+}
+const select = (cells, version) => {
+  const own = cells.filter((cell) => cell.dsh === version);
+  if (own.length === 0) return undefined;
+  if (composition) {
+    const exact = own.filter((cell) => cell.composition === composition);
+    if (exact.length === 0) return undefined;
+    return new Set(exact.map((cell) => cell.status)).size > 1 ? { status: 'mixed', composition } : exact[0];
+  }
+  const compositions = new Set(own.map((cell) => cell.composition));
+  return compositions.size > 1 ? { status: 'mixed', composition: 'mixed' } : { status: 'unknown', composition: own[0].composition };
 };
 const BAD = new Set(['rejected-by-host', 'inactive-error', 'boot-failed']);
 
@@ -79,8 +87,8 @@ for (const name of bundles) {
     name,
     firstParty: name.startsWith('@deepseek-ai/'),
     known: known !== undefined,
-    from: known ? best(known.cells, current) : undefined,
-    to: known ? best(known.cells, target) : undefined,
+    from: known ? select(known.cells, current) : undefined,
+    to: known ? select(known.cells, target) : undefined,
   };
   row.change = !row.known ? 'unknown'
     : !row.from && !row.to ? 'unknown'

@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { classifyCompatibilityDeclaration } from '../src/upgrade/compatibility.js';
+import { createCell } from '../src/matrix/cell.js';
+import { writeCell as writeMatrixCell } from '../src/matrix/cells.js';
+import { PROVENANCE } from './matrix-helpers.js';
 
 const CLI = fileURLToPath(new URL('../bin/dsh-plugin-upgrade-plan.mjs', import.meta.url));
 const FROM = '0.2.0-rc.2';
@@ -43,13 +46,33 @@ function tempRoot(t, prefix = 'dsh-upgrade-plan-') {
   return root;
 }
 
-/**
- * One matrix cell: matrix/cells/<dir>/<dsh>[+web].json, shaped like the probe
- * writes it. The directory is per plugin version, so a test can hold two tested
- * versions of the same plugin (the loader keys cells by name@version, not by the
- * directory name).
- */
-function writeCell(root, { name, version, dshVersion = TO, status = 'active', composition = 'headless' }) {
+/** Write a verified v2 cell unless a test explicitly chooses another trust level. */
+function writeCell(root, { name, version, dshVersion = TO, status = 'active', composition = 'headless', trust = 'verified' }) {
+  const artifact = { name, requestedVersion: version, resolvedVersion: version, integrity: `sha512-${name}`, sourceDigest: `sha512-${name}`, local: false };
+  const observation = {
+    outcome: 'completed',
+    loadedVersion: version,
+    durationMs: 1,
+    result: { status, composition, awaitedServices: [], entries: [], clientHalf: 'not-covered' },
+    note: 'test observation',
+    outputSha256: '0'.repeat(64),
+    reproduce: { command: `node scripts/probe-boot.mjs ${name}@${version} --dsh ${dshVersion}` },
+  };
+  const cell = createCell({
+    artifact,
+    dsh: { version: dshVersion, source: 'npm', composition },
+    observation,
+    isolation: 'docker',
+    host: { os: 'linux-x64', node: 'v22.0.0' },
+    at: new Date().toISOString(),
+    probeVersion: '0.4.0',
+  });
+  cell.run.trust = trust;
+  if (trust === 'verified') cell.run.verification = { ...PROVENANCE };
+  writeMatrixCell(join(root, 'matrix', 'cells'), cell);
+}
+
+function writeLegacyCell(root, { name, version, dshVersion = TO, status = 'active', composition = 'headless' }) {
   const dirName = (name + '@' + version).replace(/[^a-zA-Z0-9._@-]/g, '_');
   const file = join(root, 'matrix', 'cells', dirName, dshVersion + (composition === 'web' ? '+web' : '') + '.json');
   mkdirSync(dirname(file), { recursive: true });
@@ -57,15 +80,21 @@ function writeCell(root, { name, version, dshVersion = TO, status = 'active', co
     schemaVersion: 1,
     plugin: { name, version },
     dsh: { version: dshVersion, source: 'npm', profile: composition },
+    run: { at: new Date().toISOString(), trust: 'verified' },
     result: { status, composition },
   }, null, 2));
 }
 
-function writeProfile(root, { bundles, packages = [], dependencies, extra = {} } = {}) {
+function writeProfile(root, { bundles, packages = [], dependencies, extra = {}, composition = 'headless' } = {}) {
   const profile = join(root, 'profile');
   mkdirSync(profile, { recursive: true });
   const manifest = { name: 'dsh-profile-test', ...extra };
-  if (bundles !== undefined) manifest.dsh = { profile: { bundles } };
+  const profileConfig = { ...extra.dsh?.profile };
+  if (bundles !== undefined) profileConfig.bundles = bundles;
+  const selectedComposition = composition === null ? undefined : (extra.dsh?.profile?.composition || composition);
+  if (selectedComposition === undefined) delete profileConfig.composition;
+  else profileConfig.composition = selectedComposition;
+  if (Object.keys(profileConfig).length > 0) manifest.dsh = { ...extra.dsh, profile: profileConfig };
   if (dependencies !== undefined) manifest.dependencies = dependencies;
   writeFileSync(join(profile, 'package.json'), JSON.stringify(manifest, null, 2));
   for (const pkg of packages) {
@@ -416,4 +445,72 @@ test('--check-compatibility treats pending as unknown and exits 2', async (t) =>
   const { code, stdout } = await run(['--check-compatibility', dir, '--target', TO, '--json'], { cwd: root });
   assert.equal(code, 2);
   assert.equal(JSON.parse(stdout).status, 'unknown');
+});
+
+test('legacy active evidence cannot justify an upgrade recommendation', async (t) => {
+  const root = tempRoot(t);
+  writeLegacyCell(root, { name: 'legacy-plugin', version: '1.0.0', status: 'active', composition: 'headless' });
+  const profile = writeProfile(root, { bundles: ['legacy-plugin'], packages: [{ name: 'legacy-plugin', version: '1.0.0' }] });
+  const { code, stdout } = await run(analysisArgs(profile, ['--composition', 'headless']), { cwd: root });
+  assert.equal(code, 0);
+  const report = JSON.parse(stdout);
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.summary.compatible, 0);
+  assert.equal(report.summary.needsUpdate, 0);
+  assert.equal(report.categories.untested.length > 0 || report.categories.unknown.length > 0, true);
+});
+
+test('self-reported active and a different composition are not upgrade evidence', async (t) => {
+  const root = tempRoot(t);
+  writeCell(root, { name: 'demo-plugin', version: '1.0.0', status: 'active', composition: 'headless', trust: 'self-reported' });
+  writeCell(root, { name: 'web-only-plugin', version: '1.0.0', status: 'active', composition: 'web' });
+  const profile = writeProfile(root, {
+    bundles: ['demo-plugin', 'web-only-plugin'],
+    packages: [{ name: 'demo-plugin', version: '1.0.0' }, { name: 'web-only-plugin', version: '1.0.0' }],
+    extra: { dsh: { profile: { composition: 'headless' } } },
+  });
+  const { stdout } = await run(analysisArgs(profile), { cwd: root });
+  const report = JSON.parse(stdout);
+  assert.equal(report.summary.compatible, 0);
+  assert.equal(report.summary.needsUpdate, 0);
+  assert.equal(report.summary.untested, 2);
+});
+
+test('missing profile composition yields unknown or mixed instead of best-of', async (t) => {
+  const singleRoot = tempRoot(t);
+  writeCell(singleRoot, { name: 'demo-plugin', version: '1.0.0', status: 'active', composition: 'headless' });
+  const singleProfile = writeProfile(singleRoot, { bundles: ['demo-plugin'], packages: [{ name: 'demo-plugin', version: '1.0.0' }], composition: null });
+  const single = JSON.parse((await run(analysisArgs(singleProfile), { cwd: singleRoot })).stdout);
+  assert.equal(single.summary.unknown, 1);
+
+  const mixedRoot = tempRoot(t);
+  writeCell(mixedRoot, { name: 'demo-plugin', version: '1.0.0', status: 'active', composition: 'headless' });
+  writeCell(mixedRoot, { name: 'demo-plugin', version: '1.0.0', status: 'active', composition: 'web' });
+  const mixedProfile = writeProfile(mixedRoot, { bundles: ['demo-plugin'], packages: [{ name: 'demo-plugin', version: '1.0.0' }], composition: null });
+  const mixed = JSON.parse((await run(analysisArgs(mixedProfile), { cwd: mixedRoot })).stdout);
+  assert.equal(mixed.summary.mixed, 1);
+  assert.equal(mixed.summary.compatible, 0);
+});
+
+test('profile and explicit composition select only the exact evidence', async (t) => {
+  const root = tempRoot(t);
+  writeCell(root, { name: 'demo-plugin', version: '1.0.0', status: 'active', composition: 'web' });
+  const profile = writeProfile(root, {
+    bundles: ['demo-plugin'],
+    packages: [{ name: 'demo-plugin', version: '1.0.0' }],
+    extra: { dsh: { profile: { composition: 'web' } } },
+  });
+  const fromProfile = JSON.parse((await run(analysisArgs(profile), { cwd: root })).stdout);
+  assert.equal(fromProfile.summary.compatible, 1);
+  const explicit = JSON.parse((await run(analysisArgs(profile, ['--composition', 'web']), { cwd: root })).stdout);
+  assert.equal(explicit.summary.compatible, 1);
+});
+
+test('an invalid composition exits 2', async (t) => {
+  const root = tempRoot(t);
+  writeCell(root, { name: 'demo-plugin', version: '1.0.0' });
+  const profile = writeProfile(root, { bundles: ['demo-plugin'], packages: [{ name: 'demo-plugin', version: '1.0.0' }] });
+  const { code, stderr } = await run(analysisArgs(profile, ['--composition', 'best']), { cwd: root });
+  assert.equal(code, 2);
+  assert.match(stderr, /composition/);
 });
