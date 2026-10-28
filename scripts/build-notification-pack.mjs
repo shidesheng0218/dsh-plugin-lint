@@ -13,9 +13,10 @@
  * Info-level findings are deliberately excluded: a missing icon or compatibility
  * range is ecosystem-wide context, not a maintainer's problem.
  */
-import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, readdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readCells } from '../src/matrix/cells.js';
 
 const FENCE = String.fromCharCode(96).repeat(3);
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
@@ -28,7 +29,6 @@ const reportDir = argOf('--report', join(ROOT, 'reports/2026-10-13'));
 const cellsDir = argOf('--cells', join(ROOT, 'matrix/cells'));
 const outDir = argOf('--out', join(ROOT, 'notify'));
 const RANK = { active: 0, 'awaiting-service': 1, 'rejected-by-host': 2, 'inactive-error': 3, 'boot-failed': 4, 'install-failed': 5, 'template-failed': 6 };
-const best = (list) => list.slice().sort((a, b) => (RANK[a.result.status] ?? 9) - (RANK[b.result.status] ?? 9))[0];
 const safe = (name) => name.replace(/[^a-z0-9.-]/gi, '_');
 
 const subjects = new Map();
@@ -59,39 +59,38 @@ for (const r of raw.results) {
 
 // 2. matrix verdicts that are worse on the newest pinned version
 if (existsSync(cellsDir)) {
-  const cells = [];
-  for (const dir of readdirSync(cellsDir)) {
-    const abs = join(cellsDir, dir);
-    if (!statSync(abs).isDirectory()) continue;
-    for (const file of readdirSync(abs)) {
-      if (file.endsWith('.json')) cells.push(JSON.parse(readFileSync(join(abs, file), 'utf8')));
-    }
-  }
-  const versions = [...new Set(cells.map((c) => c.dsh.version))].sort();
+  const reads = readCells(cellsDir);
+  const damaged = reads.filter((entry) => !entry.ok);
+  if (damaged.length > 0) throw new Error(`cannot read ${damaged.length} matrix cell(s)`);
+  const cells = reads.filter((entry) => entry.kind === 'v2' || entry.kind === 'legacy-v1').map((entry) => entry.cell);
+  const versions = [...new Set(cells.map((cell) => cell.dsh.version))].sort();
   const mainline = versions[0];
   const newest = versions[versions.length - 1];
   const byPlugin = new Map();
-  for (const c of cells) {
-    if (!byPlugin.has(c.plugin.name)) byPlugin.set(c.plugin.name, []);
-    byPlugin.get(c.plugin.name).push(c);
+  for (const cell of cells) {
+    if (!byPlugin.has(cell.plugin.name)) byPlugin.set(cell.plugin.name, []);
+    byPlugin.get(cell.plugin.name).push(cell);
   }
+  const compositionOf = (cell) => cell.result?.composition || cell.dsh.composition || 'unknown';
   for (const [name, own] of byPlugin) {
-    const a = best(own.filter((c) => c.dsh.version === mainline));
-    const b = best(own.filter((c) => c.dsh.version === newest));
-    if (!a || !b) continue;
-    if ((RANK[b.result.status] ?? 9) <= (RANK[a.result.status] ?? 9)) continue;
-    add(name, {
-      kind: 'matrix',
-      headline: 'verdict is worse on DSH ' + newest + ' than on ' + mainline,
-      lines: [{
-        label: mainline + ': ' + a.result.status + '  ->  ' + newest + ': ' + b.result.status,
-        where: (b.result.composition || 'headless') + ' composition',
-        detected: b.result.rejection || (b.result.entries || []).map((e) => e.id + ': ' + e.reason).join(' | ') || b.result.status,
-        evidence: b.reproduce.command,
-        doc: 'docs/11-m4-capability-probe.md',
-      }],
-      reproduce: b.reproduce.command,
-    });
+    const compositions = new Set(own.map(compositionOf));
+    for (const composition of compositions) {
+      const a = own.find((cell) => cell.dsh.version === mainline && compositionOf(cell) === composition);
+      const b = own.find((cell) => cell.dsh.version === newest && compositionOf(cell) === composition);
+      if (!a || !b || (RANK[b.result.status] ?? 9) <= (RANK[a.result.status] ?? 9)) continue;
+      add(name, {
+        kind: 'matrix',
+        headline: 'verdict is worse on DSH ' + newest + ' than on ' + mainline,
+        lines: [{
+          label: mainline + ': ' + a.result.status + '  ->  ' + newest + ': ' + b.result.status,
+          where: composition + ' composition',
+          detected: b.result.rejection || (b.result.entries || []).map((entry) => entry.id + ': ' + entry.reason).join(' | ') || b.result.status,
+          evidence: b.reproduce.command,
+          doc: 'docs/11-m4-capability-probe.md',
+        }],
+        reproduce: b.reproduce.command,
+      });
+    }
   }
 }
 

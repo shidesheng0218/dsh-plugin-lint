@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { exportPublicArtifact } from '../src/matrix/export.js';
 import { syncMatrix } from '../src/matrix/sync.js';
+import { runVerification } from '../src/matrix/verify.js';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const USAGE = [
@@ -11,6 +12,7 @@ const USAGE = [
   'Usage',
   '  dsh-plugin-matrix export --cells <dir> --conflicts <file> [--out matrix/public] [--run-id id] [--expected-cells n]',
   '  dsh-plugin-matrix sync --source <dir-or-https-url> --out <dir>',
+  '  dsh-plugin-matrix verify [--cells dir] [--sample 0.2] [--seed 1] [--all] [--out report.json]',
   '',
   'Export validates and sanitizes local v2 evidence. Sync reads only bytes, verifies',
   'hashes and schemas, then atomically replaces the output. Neither command executes artifacts.',
@@ -48,6 +50,24 @@ try {
     const result = await syncMatrix({ source, outDir });
     console.log(`synced ${result.filesWritten} files from ${source}`);
     process.exitCode = 0;
+  } else if (command === 'verify') {
+    const out = argOf('--out', join(ROOT, 'matrix/index/verification.json'));
+    const { report } = await runVerification({
+      cellsDir: argOf('--cells', join(ROOT, 'matrix/cells')),
+      cacheRoot: argOf('--cache', join(ROOT, '.matrix-cache')),
+      sample: Number(argOf('--sample', '0.2')),
+      seed: Number(argOf('--seed', '1')),
+      all: rest.includes('--all'),
+      concurrency: Number(argOf('--concurrency', '2')),
+      backend: rest.includes('--unsafe-host') ? 'host-unsafe' : 'auto',
+      workflow: argOf('--workflow', 'local'),
+      runId: argOf('--run-id', 'local'),
+      runUrl: argOf('--run-url', ''),
+      out,
+    });
+    console.log(`checked ${report.checked} | confirmed ${report.confirmed} | disputed ${report.disputed} | errors ${report.errors}`);
+    console.log('report written to ' + out);
+    process.exitCode = report.errors > 0 ? 2 : 0;
   } else {
     console.error(USAGE);
     process.exit(2);

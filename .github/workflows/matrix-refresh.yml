@@ -42,18 +42,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -n "$PLUGINS" ]; then
-            node scripts/matrix/run.mjs --plugins "$PLUGINS" --out "$OUT" --concurrency 4 "$TOOLS"
+            node scripts/matrix/run.mjs --plugins "$PLUGINS" --target-mode refresh-latest --out "$OUT" --concurrency 4 "$TOOLS"
           else
-            node scripts/matrix/run.mjs --targets matrix/targets-top50.json --out "$OUT" --concurrency 4 "$TOOLS"
+            node scripts/matrix/run.mjs --targets matrix/targets-top50.json --target-mode refresh-latest --out "$OUT" --concurrency 4 "$TOOLS"
           fi
-
-      - name: Regenerate the site and the aggregate index
-        if: ${{ inputs.out == '' || inputs.out == 'matrix/cells' }}
-        run: node scripts/matrix/site.mjs
-
-      - name: Snapshot the aggregate into the panel package
-        if: ${{ inputs.out == '' || inputs.out == 'matrix/cells' }}
-        run: node scripts/matrix/bundle-panel-data.mjs
+          node scripts/matrix/conflicts.mjs --cells "$OUT" --cache .matrix-cache --out matrix/index/conflicts.json
 
       - name: Upload the candidate artifact
         uses: actions/upload-artifact@v4
@@ -61,6 +54,51 @@ jobs:
           name: matrix-candidate
           path: |
             ${{ inputs.out || 'matrix/cells' }}
-            matrix/index
-            panel/data/aggregate.json
+            matrix/index/conflicts.json
           if-no-files-found: error
+
+  publish:
+    needs: probe
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: matrix-candidate
+          path: candidate
+
+      - name: Verify the candidate offline
+        run: node scripts/matrix/verify-public.mjs --source candidate
+
+      - name: Sync the verified public artifact
+        run: node bin/dsh-plugin-matrix.mjs sync --source candidate --out matrix/public
+
+      - name: Open a data-only pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          checked=$(node -e "const fs=require('fs'); process.stdout.write(String(JSON.parse(fs.readFileSync('candidate/manifest.json','utf8')).cellCount))")
+          if [ "$checked" = "0" ]; then
+            echo "no cells to publish"
+            exit 0
+          fi
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "no data change"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          branch="matrix/refresh-${{ github.run_id }}"
+          git checkout -b "$branch"
+          git add matrix/public
+          git commit -m "chore(matrix): refresh public evidence"
+          git push origin "HEAD:$branch"
+          gh pr create --title "chore(matrix): refresh public evidence" --body "Automated matrix candidate, revalidated offline. Review composition and trust changes; do not merge automatically." --base "${{ github.event.repository.default_branch }}" --head "$branch"
