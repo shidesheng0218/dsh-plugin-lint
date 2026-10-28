@@ -3,6 +3,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
+import { ToolError } from '../shared/errors.js';
 
 const execFileAsync = promisify(execFile);
 const DESKTOP_ELECTRON = process.env.DSH_ELECTRON || '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness';
@@ -29,9 +30,37 @@ export function execFileRunner(command, args, options = {}) {
   });
 }
 
-export async function resolveDsh(version, cacheRoot, { runner = execFileRunner } = {}) {
+export async function resolveDsh(version, cacheRoot, { runner = execFileRunner, environment } = {}) {
   if (!version || version === 'desktop') {
     return { id: 'desktop', kind: 'desktop', version: 'desktop', node: DESKTOP_ELECTRON, cli: DESKTOP_CLI, extraArgs: ['--expose-internals'] };
+  }
+  if (environment?.isolation === 'docker') {
+    const dir = environment.dshDir;
+    const cli = join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+    if (!existsSync(cli)) {
+      await environment.boot({
+        dsh: { kind: 'npm', cli: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', extraArgs: [] },
+        args: [
+          'install', '--prefix', '/dsh', '--no-audit', '--no-fund', '--silent',
+          '--cache', '/tmp/npm-cache', '--registry=https://registry.npmjs.org/',
+          '@deepseek-ai/dsh@' + version,
+        ],
+        env: { HOME: '/tmp' },
+        network: 'registry',
+        writableDsh: true,
+      });
+    }
+    if (!existsSync(cli)) throw new ToolError('ARTIFACT_MISSING', 'DSH installation did not produce the expected CLI.');
+    return {
+      id: 'npm:' + version,
+      kind: 'npm',
+      version,
+      node: process.execPath,
+      cli,
+      containerNode: 'node',
+      containerCli: '/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js',
+      extraArgs: [],
+    };
   }
   const dir = join(cacheRoot, 'dsh', version);
   const cli = join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
@@ -44,7 +73,7 @@ export async function resolveDsh(version, cacheRoot, { runner = execFileRunner }
       '@deepseek-ai/dsh@' + version,
     ], { env: safeEnv({ HOME: home }), timeout: 600000, maxBuffer: 16 * 1024 * 1024 });
   }
-  if (!existsSync(cli)) throw new Error('dsh ' + version + ' installed but ' + cli + ' is missing');
+  if (!existsSync(cli)) throw new ToolError('ARTIFACT_MISSING', 'DSH installation did not produce the expected CLI.');
   return { id: 'npm:' + version, kind: 'npm', version, node: process.execPath, cli, extraArgs: [] };
 }
 

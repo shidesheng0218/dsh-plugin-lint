@@ -2,13 +2,14 @@ import { rmSync } from 'node:fs';
 import { ToolError } from '../../shared/errors.js';
 import { runDsh, runUntilReady } from '../dsh-adapter.js';
 
-export function createHostUnsafeEnvironment({ workDir, profileDir, timeoutMs, runner, materialize }) {
+export function createHostUnsafeEnvironment({ workDir, profileDir, dshDir, timeoutMs, runner, materialize }) {
   return {
     backend: 'host-unsafe',
     isolation: 'host-unsafe',
     warning: 'UNSAFE: plugin code runs on the host without container isolation.',
     workDir,
     profileDir,
+    dshDir,
     materialize,
     async install({ dsh, target, profile = 'headless', env = {} }) {
       const installTarget = typeof target === 'string' ? target : target?.hostPath || target?.installTarget || target?.path;

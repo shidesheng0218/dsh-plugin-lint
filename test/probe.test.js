@@ -1,9 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { classify, parseInactive } from '../scripts/lib/probe.mjs';
+import { probeFixture } from './probe-helpers.js';
 
 /**
  * classify() is the verdict vocabulary of the whole probe, so its edges are
@@ -63,49 +61,35 @@ test('parseInactive reads the did-not-activate block and the stack lines under i
   assert.match(entries[1].detail, /at Object\.apply/);
 });
 
-// ---------------------------------------------------------------- audit
-
-test('the audit reports observed capabilities with their call sites', async () => {
-  const { probePackage } = await import('../scripts/lib/probe.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-audit-'));
-  mkdirSync(join(dir, 'lib'), { recursive: true });
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({
-    name: 'audit-test',
-    version: '1.0.0',
-    type: 'module',
-    main: 'index.js',
-  }));
-  writeFileSync(join(dir, 'index.js'), 'export function apply(ctx) { ctx.slots.register({ name: "settings.section" }, () => {}); }');
-  writeFileSync(join(dir, 'lib', 'worker.js'), 'import { exec } from "node:child_process"; export function run() { exec("ls"); }');
-  try {
-    const cell = await probePackage({ target: dir, dsh: { id: 'npm:0.2.0-rc.2', kind: 'npm', version: '0.2.0-rc.2', node: process.execPath, cli: 'unused', extraArgs: [] }, audit: true });
-    const caps = cell.audit.observed.map((o) => o.capability);
-    assert.ok(caps.includes('ui-injection'), 'ctx.slots.register is observed as ui-injection');
-    assert.ok(caps.includes('shell'), 'exec() is observed as shell');
-    const shell = cell.audit.observed.find((o) => o.capability === 'shell');
-    assert.equal(shell.sites, 1, 'exec( is one shell site');
-    assert.equal(shell.first.file, 'lib/worker.js');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+test('web readiness does not hide a non-waiting inactive failure', () => {
+  assert.equal(classify('ready', [{ reason: 'configuration rejected' }], true), 'inactive-error');
 });
 
-test('a capability mentioned in a string is not observed', async () => {
+// ---------------------------------------------------------------- audit
+
+test('the audit reports observed capabilities with their call sites', async (t) => {
   const { probePackage } = await import('../scripts/lib/probe.mjs');
-  const dir = mkdtempSync(join(tmpdir(), 'dsh-audit-'));
-  writeFileSync(join(dir, 'package.json'), JSON.stringify({
-    name: 'audit-test',
-    version: '1.0.0',
-    type: 'module',
-    main: 'index.js',
-  }));
-  // The word "fetch(" appears in a string literal, not in code.
-  writeFileSync(join(dir, 'index.js'), 'export const note = "call fetch() to load data"; export function apply() {}');
-  try {
-    const cell = await probePackage({ target: dir, dsh: { id: 'npm:0.2.0-rc.2', kind: 'npm', version: '0.2.0-rc.2', node: process.execPath, cli: 'unused', extraArgs: [] }, audit: true });
-    const caps = cell.audit.observed.map((o) => o.capability);
-    assert.ok(!caps.includes('network'), 'a string mentioning fetch( is not a network call');
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  const fixture = probeFixture(t, {
+    sourceFiles: {
+      'index.js': 'export function apply(ctx) { ctx.slots.register({ name: "settings.section" }, () => {}); }',
+      'lib/worker.js': 'import { exec } from "node:child_process"; export function run() { exec("ls"); }',
+    },
+  });
+  const cell = await probePackage({ ...fixture, audit: true });
+  const caps = cell.audit.observed.map((o) => o.capability);
+  assert.ok(caps.includes('ui-injection'), 'ctx.slots.register is observed as ui-injection');
+  assert.ok(caps.includes('shell'), 'exec() is observed as shell');
+  const shell = cell.audit.observed.find((o) => o.capability === 'shell');
+  assert.equal(shell.sites, 1, 'exec( is one shell site');
+  assert.equal(shell.first.file, 'lib/worker.js');
+});
+
+test('a capability mentioned in a string is not observed', async (t) => {
+  const { probePackage } = await import('../scripts/lib/probe.mjs');
+  const fixture = probeFixture(t, {
+    sourceFiles: { 'index.js': 'export const note = "call fetch() to load data"; export function apply() {}' },
+  });
+  const cell = await probePackage({ ...fixture, audit: true });
+  const caps = cell.audit.observed.map((o) => o.capability);
+  assert.ok(!caps.includes('network'), 'a string mentioning fetch( is not a network call');
 });

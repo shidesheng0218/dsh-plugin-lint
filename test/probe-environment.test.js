@@ -148,3 +148,64 @@ test('unsafe host requires an explicit backend and carries a warning', async (t)
   assert.match(environment.warning, /unsafe/i);
   await environment.destroy();
 });
+
+test('resolveDsh installs the harness inside the isolated environment', async (t) => {
+  const dshDir = mkdtempSync(join(tmpdir(), 'dsh-isolated-resolver-'));
+  t.after(() => rmSync(dshDir, { recursive: true, force: true }));
+  const calls = [];
+  const environment = {
+    isolation: 'docker',
+    dshDir,
+    async boot(input) {
+      calls.push(input);
+      const cli = join(dshDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
+      mkdirSync(join(dshDir, 'node_modules', '@deepseek-ai', 'dsh', 'lib'), { recursive: true });
+      writeFileSync(cli, '');
+      return { out: '' };
+    },
+  };
+  const resolved = await resolveDsh('1.2.3', undefined, { environment });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].network, 'registry');
+  assert.equal(calls[0].writableDsh, true);
+  assert.equal(calls[0].args.includes('@deepseek-ai/dsh@1.2.3'), true);
+  assert.equal(resolved.containerCli, '/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js');
+});
+
+test('web readiness is returned even when the long-lived server is stopped', async (t) => {
+  const workDir = mkdtempSync(join(tmpdir(), 'dsh-web-ready-'));
+  t.after(() => rmSync(workDir, { recursive: true, force: true }));
+  const runner = fakeRunner(async (command, args) => {
+    if (args[0] === 'version') return { stdout: '27.0.0', stderr: '' };
+    if (args[0] === 'run') throw Object.assign(new Error('timeout'), { stdout: 'dsh web: http://127.0.0.1:1234/?token=local', killed: true });
+    return { stdout: '', stderr: '' };
+  });
+  const environment = await createProbeEnvironment({ backend: 'docker', workDir, runner });
+  const result = await environment.boot({ dsh, args: [], readyRe: WEB_READY });
+  assert.match(result.out, /dsh web:/);
+  await environment.destroy();
+});
+
+test('the tools stub uses an internal Docker network and replays captured requests', async (t) => {
+  const workDir = mkdtempSync(join(tmpdir(), 'dsh-internal-stub-'));
+  t.after(() => rmSync(workDir, { recursive: true, force: true }));
+  const runner = fakeRunner(async (command, args) => {
+    if (args[0] === 'version') return { stdout: '27.0.0', stderr: '' };
+    if (args[0] === 'network' && args[1] === 'create') return { stdout: 'network-id', stderr: '' };
+    if (args[0] === 'logs') return { stdout: 'PROBE_STUB_READY', stderr: '' };
+    return { stdout: '', stderr: '' };
+  });
+  const environment = await createProbeEnvironment({ backend: 'docker', workDir, runner });
+  const stub = await environment.startStub();
+  assert.equal(stub.baseURL, 'http://probe-stub:3000');
+  const networkCreate = runner.calls.find((call) => call.args[0] === 'network' && call.args[1] === 'create');
+  assert.equal(networkCreate.args.includes('--internal'), true);
+  await environment.boot({ dsh, args: [], network: stub.network });
+  const boot = runner.calls.filter((call) => call.args[0] === 'run').at(-1);
+  assert.equal(boot.args.includes(`--network=${stub.network}`), true);
+  writeFileSync(join(environment.profileDir, 'stub-seen.jsonl'), JSON.stringify({ tools: [] }) + '\n');
+  await stub.sync();
+  assert.equal(stub.seen.length, 1);
+  await environment.destroy();
+  assert.equal(runner.calls.some((call) => call.args[0] === 'network' && call.args[1] === 'rm'), true);
+});
