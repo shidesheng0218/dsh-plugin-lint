@@ -28,6 +28,8 @@ export function buildIndex(cells, { generatedAt = new Date().toISOString(), sour
         status: cell.result.status,
         trust: cell.run.trust,
         at: cell.run.at,
+        note: cell.evidence?.note,
+        awaitedServices: cell.result.awaitedServices,
         toolsAdded: cell.result.tools?.added || [],
         audit: cell.result.audit,
         systemPromptChars: cell.result.systemPrompt?.chars,
