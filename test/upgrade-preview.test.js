@@ -12,13 +12,13 @@ const SCRIPT = fileURLToPath(new URL('../scripts/upgrade-preview.mjs', import.me
  * Build a throwaway profile and index on disk, run the preview, return stdout.
  * The script is the public surface, so the tests go through it end to end.
  */
-function run(profileBundles, index, args = []) {
+function run(profileBundles, index, args = [], { composition = 'headless' } = {}) {
   const home = mkdtempSync(join(tmpdir(), 'dsh-upgrade-preview-'));
   const profileDir = join(home, 'profile');
   mkdirSync(profileDir, { recursive: true });
   writeFileSync(join(profileDir, 'package.json'), JSON.stringify({
     name: 'dsh-profile-test',
-    dsh: { profile: { bundles: profileBundles } },
+    dsh: { profile: { bundles: profileBundles, ...(composition ? { composition } : {}) } },
   }));
   const indexPath = join(home, 'index.json');
   writeFileSync(indexPath, JSON.stringify(index));
@@ -54,8 +54,7 @@ const INDEX = {
       ],
     },
     {
-      // One favourable composition must win over an unfavourable one on the
-      // same version — the site generator's ranking, applied to the preview.
+      // Multiple compositions on one version must remain visible, not be ranked.
       name: 'waits-in-headless',
       version: '1.0.0',
       cells: [
@@ -82,10 +81,14 @@ test('a plugin with the same verdict on both versions is unchanged', () => {
   assert.match(out, /= {2}stays-active/);
 });
 
-test('the most favourable composition wins, so a web-active plugin is not reported as waiting', () => {
-  const { out } = run(['waits-in-headless'], INDEX);
-  assert.match(out, /1 unchanged/);
-  assert.match(out, /0\.2\.1-alpha\.2: active/, 'the web cell wins over the headless awaiting cell');
+test('mixed compositions are shown instead of selecting the most favourable', () => {
+  const { out } = run(['waits-in-headless'], INDEX, [], { composition: null });
+  assert.match(out, /0\.2\.1-alpha\.2: mixed/, 'unknown profile composition must not pick web active');
+});
+
+test('an unknown profile composition makes a single-composition result unknown', () => {
+  const { out } = run(['stays-active'], INDEX, [], { composition: null });
+  assert.match(out, /0\.2\.1-alpha\.2: unknown/);
 });
 
 test('a plugin the matrix does not cover is reported as unknown, not as a verdict', () => {

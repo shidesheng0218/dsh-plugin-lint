@@ -25,7 +25,8 @@
     "dsh-plugin-lint": "bin/dsh-plugin-lint.mjs",
     "dsh-plugin-probe": "scripts/probe-boot.mjs",
     "dsh-plugin-analyze": "bin/dsh-plugin-analyze.mjs",
-    "dsh-plugin-upgrade-plan": "bin/dsh-plugin-upgrade-plan.mjs"
+    "dsh-plugin-upgrade-plan": "bin/dsh-plugin-upgrade-plan.mjs",
+    "dsh-plugin-matrix": "bin/dsh-plugin-matrix.mjs"
   },
   "files": [
     "bin/",
