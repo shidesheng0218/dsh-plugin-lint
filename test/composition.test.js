@@ -36,7 +36,7 @@ test('detectConflicts - detects tool name collisions registered through defineTo
   assert.deepEqual(conflicts.toolNames[0].plugins.sort(), ['search-a', 'search-b']);
 });
 
-test('detectConflicts - detects route collisions registered through connection.fetch', () => {
+test('detectConflicts - detects route collisions by method and path', () => {
   const route = "connection.fetch.register({ path: '/api/shared', methods: ['POST'] });";
   const conflicts = detectConflicts([
     pkgWith('route-a', [['index.js', route]]),
@@ -44,7 +44,9 @@ test('detectConflicts - detects route collisions registered through connection.f
   ]);
 
   assert.equal(conflicts.routes.length, 1, 'should detect one route conflict');
-  assert.equal(conflicts.routes[0].resource, '/api/shared');
+  assert.equal(conflicts.routes[0].resource, 'POST /api/shared');
+  assert.equal(conflicts.routes[0].path, '/api/shared');
+  assert.deepEqual(conflicts.routes[0].methods, ['POST']);
 });
 
 test('detectConflicts - reports no conflict for distinct resources', () => {
@@ -92,9 +94,39 @@ test('detectConflicts - a package loaded from disk gets a usable plugin label', 
   assert.deepEqual(conflicts.slots[0].plugins.sort(), ['manifest-plugin', 'plugin-b'], 'name falls back to manifest.name');
 });
 
-test('detectConflicts - marks the analysis as experimental', () => {
+test('detectConflicts - marks the analysis as experimental schema v2', () => {
   const conflicts = detectConflicts([]);
+  assert.equal(conflicts.schemaVersion, 2);
   assert.equal(conflicts.experimental, true);
   assert.ok(Array.isArray(conflicts.limits) && conflicts.limits.length > 0);
   assert.equal(conflicts.summary.total, 0);
+});
+
+test('different HTTP methods on one path do not conflict', () => {
+  const conflicts = detectConflicts([
+    pkgWith('a', [['index.js', "connection.fetch.register({ path: '/api/x', methods: ['GET'] });"]]),
+    pkgWith('b', [['index.js', "connection.fetch.register({ path: '/api/x', methods: ['POST'] });"]]),
+  ]);
+  assert.equal(conflicts.routes.length, 0);
+});
+
+test('deliberate reject and throw are decisions, not missing next()', () => {
+  const rejecting = "ctx.on('agent/pre-step', () => { return { kind: 'reject' }; });";
+  const throwing = "ctx.on('agent/pre-step', () => { throw new Error('stop'); });";
+  const conflicts = detectConflicts([
+    pkgWith('a', [['index.js', rejecting]]),
+    pkgWith('b', [['index.js', throwing]]),
+  ]);
+  assert.equal(conflicts.eventListeners.length, 0);
+});
+
+test('routes without method information are unknown rather than certain conflicts', () => {
+  const route = "connection.fetch.register({ path: '/api/unknown' });";
+  const conflicts = detectConflicts([
+    pkgWith('a', [['index.js', route]]),
+    pkgWith('b', [['index.js', route]]),
+  ]);
+  assert.equal(conflicts.routes.length, 0);
+  assert.equal(conflicts.unknownRoutes.length, 2);
+  assert.equal(conflicts.unknownRoutes[0].method, 'unknown');
 });

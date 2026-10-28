@@ -79,11 +79,25 @@ test('analyzeSecurityDeep - calculates risk level', () => {
   assert.equal(typeof result.summary.total, 'number', 'should have numeric summary');
 });
 
-test('analyzeSecurityDeep - marks the analysis as experimental', () => {
+test('analyzeSecurityDeep - marks the analysis as experimental schema v2', () => {
   const result = analyzeSecurityDeep(pkg([file('secure.js', 'console.log(1);')]));
+  assert.equal(result.schemaVersion, 2);
   assert.equal(result.experimental, true);
   assert.deepEqual(result.limits, SECURITY_LIMITS);
   assert.equal(SECURITY_RULES.length, 10);
+});
+
+test('the experimental package entry exposes only the versioned analysis API', async () => {
+  const api = await import('@shidesheng0218/dsh-plugin-lint/experimental');
+  assert.equal(api.EXPERIMENTAL_SCHEMA_VERSION, 2);
+  assert.deepEqual(Object.keys(api).sort(), [
+    'EXPERIMENTAL_SCHEMA_VERSION',
+    'SECURITY_LIMITS',
+    'SECURITY_RULES',
+    'analyzePerformance',
+    'analyzeSecurityDeep',
+    'detectConflicts',
+  ]);
 });
 
 test('analyzeSecurityDeep - categorizes findings', () => {
