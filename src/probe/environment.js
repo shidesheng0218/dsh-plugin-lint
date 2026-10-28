@@ -24,11 +24,11 @@ export async function createProbeEnvironment({
   chmodSync(root, 0o755);
   chmodSync(sourceDir, 0o755);
   chmodSync(profileDir, 0o777);
-  chmodSync(dshDir, 0o755);
+  chmodSync(dshDir, 0o777);
   const materialize = (artifact) => materializeArtifact(artifact, sourceDir);
   try {
     if (backend === 'host-unsafe') {
-      return createHostUnsafeEnvironment({ workDir: root, profileDir, timeoutMs, runner, materialize });
+      return createHostUnsafeEnvironment({ workDir: root, profileDir, dshDir, timeoutMs, runner, materialize });
     }
     if (backend !== 'auto' && backend !== 'docker') {
       throw new ToolError('ISOLATION_UNSUPPORTED', `Unsupported probe backend: ${backend}`);
