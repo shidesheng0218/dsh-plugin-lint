@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendCallSites, blockAfter, braceDepthAt, lineOfIndex, stringAfter } from './mask.js';
-import { filesCover, exportTarget } from './load.js';
+import { exportTarget } from './load.js';
+import { hasPackedFile } from './packlist.js';
 
 const CATALOG = JSON.parse(readFileSync(new URL('../data/event-types.json', import.meta.url), 'utf8'));
 export const EVENT_TYPES = new Set(CATALOG.types);
@@ -137,16 +138,15 @@ export const RULES = [
     title: 'published files omit an artifact the manifest depends on',
     doc: DOC.host,
     check(ctx, options, push) {
-      if (ctx.files === undefined || ctx.files.length === 0) return;
       const artifacts = [
-        ['host entry', ctx.entries.host],
+        ['host entry', ctx.entries.hostDeclared ? ctx.entries.host : undefined],
         ['client entry', ctx.entries.client],
         ['bundle patch', ctx.entries.patch],
         ['icon', ctx.entries.icon],
       ];
       for (const [label, rel] of artifacts) {
-        if (rel === undefined || !ctx.exists(rel)) continue;
-        if (filesCover(ctx.files, rel)) continue;
+        if (rel === undefined || !ctx.exists(rel) || !ctx.packlist.complete) continue;
+        if (hasPackedFile(ctx.packlist, rel)) continue;
         push({
           file: 'package.json',
           line: manifestLine(ctx.manifestText, '"files"'),
@@ -352,11 +352,11 @@ export const RULES = [
           hint: 'Display metadata is read through the locale subpath.',
         });
       }
-      if (ctx.files && ctx.files.length > 0 && !filesCover(ctx.files, dir + '/en.json')) {
+      if (ctx.exists(dir + '/en.json') && ctx.packlist.complete && !hasPackedFile(ctx.packlist, dir + '/en.json')) {
         push({
           file: 'package.json',
           line: manifestLine(ctx.manifestText, '"files"'),
-          message: 'locale files are not covered by "files".',
+          message: 'locale files are excluded from the published package by "files" or .npmignore.',
           evidence: 'files: ' + JSON.stringify(ctx.files),
           hint: 'Metadata missing from the tarball shows as a fallback title and default artwork.',
         });

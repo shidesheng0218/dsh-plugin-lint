@@ -21,7 +21,7 @@ jobs:
         run: node scripts/fetch-official-from-npm.mjs --limit 80
 
       - name: Zero-false-positive baseline
-        run: node scripts/e2e-official.mjs
+        run: node scripts/e2e-official.mjs --expect 80
 
       - name: Lint our own plugin and fixtures
         run: node bin/dsh-plugin-lint.mjs panel test/probe-plugins --no-color --exit-code

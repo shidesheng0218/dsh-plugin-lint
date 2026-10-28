@@ -14,6 +14,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { classifyCompatibilityDeclaration } from '../src/upgrade/compatibility.js';
 
 const CLI = fileURLToPath(new URL('../bin/dsh-plugin-upgrade-plan.mjs', import.meta.url));
 const FROM = '0.2.0-rc.2';
@@ -393,4 +394,26 @@ test('--matrix accepts an arbitrary cells directory instead of ./matrix/cells', 
   const report = JSON.parse(stdout);
   assert.equal(report.matrix.dir, cellsDir);
   assert.equal(report.categories.compatible.length, 1);
+});
+
+test('compatibility declarations distinguish explicit values from unknown ones', () => {
+  assert.equal(classifyCompatibilityDeclaration('compatible'), 'compatible');
+  assert.equal(classifyCompatibilityDeclaration(true), 'compatible');
+  assert.equal(classifyCompatibilityDeclaration({ compatible: true }), 'compatible');
+  assert.equal(classifyCompatibilityDeclaration('incompatible'), 'incompatible');
+  assert.equal(classifyCompatibilityDeclaration(false), 'incompatible');
+  assert.equal(classifyCompatibilityDeclaration({ compatible: false }), 'incompatible');
+  assert.equal(classifyCompatibilityDeclaration({ status: 'unsupported' }), 'incompatible');
+  assert.equal(classifyCompatibilityDeclaration('pending'), 'unknown');
+  assert.equal(classifyCompatibilityDeclaration({ status: 'pending' }), 'unknown');
+  assert.equal(classifyCompatibilityDeclaration({ status: 'compatible' }), 'unknown');
+  assert.equal(classifyCompatibilityDeclaration(undefined), 'unknown');
+});
+
+test('--check-compatibility treats pending as unknown and exits 2', async (t) => {
+  const root = tempRoot(t);
+  const dir = writeCheckPlugin(root, { [TO]: 'pending' });
+  const { code, stdout } = await run(['--check-compatibility', dir, '--target', TO, '--json'], { cwd: root });
+  assert.equal(code, 2);
+  assert.equal(JSON.parse(stdout).status, 'unknown');
 });
