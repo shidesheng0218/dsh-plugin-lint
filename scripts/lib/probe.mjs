@@ -17,126 +17,12 @@
  *   - the stub provider must be served while the child runs, so children are
  *     started ASYNCHRONOUSLY (a synchronous child deadlocks the stub).
  */
-import { execFile, spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { promisify } from 'node:util';
+import { WEB_READY, resolveDsh, runDsh, runUntilReady, startStub } from '../../src/probe/dsh-adapter.js';
 
-const execFileAsync = promisify(execFile);
-const DESKTOP_ELECTRON = process.env.DSH_ELECTRON || '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness';
-const DESKTOP_CLI = process.env.DSH_CLI || '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js';
-
-/** Resolve which DSH to probe. version undefined means the installed desktop app. */
-export async function resolveDsh(version, cacheRoot) {
-  if (!version || version === 'desktop') {
-    return { id: 'desktop', kind: 'desktop', version: 'desktop', node: DESKTOP_ELECTRON, cli: DESKTOP_CLI, extraArgs: ['--expose-internals'] };
-  }
-  const dir = join(cacheRoot, 'dsh', version);
-  const cli = join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
-  if (!existsSync(cli)) {
-    mkdirSync(dir, { recursive: true });
-    await execFileAsync('npm', ['install', '--prefix', dir, '--no-audit', '--no-fund', '--silent', '@deepseek-ai/dsh@' + version], { timeout: 600000, maxBuffer: 16 * 1024 * 1024 });
-  }
-  if (!existsSync(cli)) throw new Error('dsh ' + version + ' installed but ' + cli + ' is missing');
-  return { id: 'npm:' + version, kind: 'npm', version, node: process.execPath, cli, extraArgs: [] };
-}
-
-/** A minimal Anthropic-Messages endpoint that records what the harness sends. */
-export function startStub() {
-  const seen = [];
-  const server = createServer((req, res) => {
-    let raw = '';
-    req.on('data', (c) => { raw += c; });
-    req.on('end', () => {
-      let body = null;
-      try { body = JSON.parse(raw); } catch { /* keep null */ }
-      if (body) seen.push(body);
-      if (!body || !body.stream) {
-        res.writeHead(200, { 'content-type': 'application/json' });
-        res.end(JSON.stringify({
-          id: 'msg_probe', type: 'message', role: 'assistant', model: body?.model || 'probe',
-          content: [{ type: 'text', text: 'ok' }], stop_reason: 'end_turn', stop_sequence: null,
-          usage: { input_tokens: 1, output_tokens: 1 },
-        }));
-        return;
-      }
-      const sse = (event, data) => res.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n');
-      res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
-      sse('message_start', { type: 'message_start', message: { id: 'msg_probe', type: 'message', role: 'assistant', model: body.model || 'probe', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } } });
-      sse('content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } });
-      sse('content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ok' } });
-      sse('content_block_stop', { type: 'content_block_stop', index: 0 });
-      sse('message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 1 } });
-      sse('message_stop', { type: 'message_stop' });
-      res.end();
-    });
-  });
-  return new Promise((resolve_) => {
-    server.listen(0, '127.0.0.1', () => resolve_({ server, seen, port: server.address().port }));
-  });
-}
-
-/** Run the CLI asynchronously; the stub lives in this process and must stay responsive. */
-export async function runDsh(dsh, home, args, env = {}) {
-  const { stdout, stderr } = await execFileAsync(dsh.node, [...dsh.extraArgs, dsh.cli, ...args], {
-    env: { ...process.env, DSH_HOME: home, ...(dsh.kind === 'desktop' ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ...env },
-    encoding: 'utf8',
-    maxBuffer: 32 * 1024 * 1024,
-    timeout: 180000,
-  });
-  return stdout + stderr;
-}
-
-/**
- * A recording proxy for the audit mode: every request the plugin's process
- * makes to the outside is logged, then forwarded. The proxy is plain HTTP —
- * the harness and its plugins run on localhost, so TLS interception is not
- * needed and would require a CA we do not have.
- *
- * Dropped: Node's http.request is not writable, so a proxy loader cannot
- * intercept it. The audit is a static capability scan instead — see
- * probePackage's audit block.
- */
-
-/**
- * Run a long-lived profile until it reports readiness, then stop it.
- *
- * The web profile serves until killed, so readiness is a sentinel line rather
- * than an exit: "dsh web: http://127.0.0.1:<port>/?token=…". We stop as soon as
- * it appears (plus a short grace period) because a mounted plugin may start doing
- * work of its own — one probed plugin started downloading a 116 MB Electron build.
- */
-export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
-  const timeoutMs = options.timeoutMs ?? 90000;
-  const graceMs = options.graceMs ?? 2500;
-  return new Promise((resolve) => {
-    const child = spawn(dsh.node, [...dsh.extraArgs, dsh.cli, ...args], {
-      env: { ...process.env, DSH_HOME: home, ...(dsh.kind === 'desktop' ? { ELECTRON_RUN_AS_NODE: '1' } : {}), ...env },
-    });
-    let out = '';
-    let finished = false;
-    const finish = () => {
-      if (finished) return;
-      finished = true;
-      child.kill('SIGTERM');
-      setTimeout(() => child.kill('SIGKILL'), 1500).unref();
-      resolve(out);
-    };
-    const feed = (chunk) => {
-      out += chunk;
-      if (readyRe.test(out)) setTimeout(finish, graceMs).unref();
-    };
-    child.stdout.on('data', feed);
-    child.stderr.on('data', feed);
-    child.on('exit', () => { if (!finished) { finished = true; resolve(out); } });
-    setTimeout(finish, timeoutMs).unref();
-  });
-}
-
-/** Readiness sentinel of the web profile. */
-export const WEB_READY = /dsh web:\s*https?:\/\//;
+export { WEB_READY, resolveDsh, runDsh, runUntilReady, startStub } from '../../src/probe/dsh-adapter.js';
 
 export async function capture(fn) {
   try { return { out: await fn(), failed: false }; } catch (error) {
