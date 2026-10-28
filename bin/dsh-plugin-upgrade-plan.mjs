@@ -19,6 +19,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { loadPackage } from '../src/load.js';
+import { classifyCompatibilityDeclaration } from '../src/upgrade/compatibility.js';
 
 const USAGE = [
   'dsh-plugin-upgrade-plan — matrix-based DSH upgrade planner (experimental)',
@@ -583,19 +584,6 @@ function printAnalysis(report, options) {
   }
 }
 
-function isIncompatible(value) {
-  if (value === undefined || value === null) return false;
-  if (value === false) return true;
-  const pattern = /incompatible|unsupported|broken|failed|rejected|inactive|boot/i;
-  if (typeof value === 'string') return pattern.test(value);
-  if (typeof value === 'object') {
-    if (value.compatible === false) return true;
-    const status = value.status ?? value.verdict;
-    return typeof status === 'string' ? pattern.test(status) : false;
-  }
-  return false;
-}
-
 function runCheckCompatibility(options) {
   const dir = options.checkCompatibility;
   let pkg;
@@ -623,12 +611,16 @@ function runCheckCompatibility(options) {
       + ' (declares: ' + Object.keys(declaredRecord).join(', ') + ')';
   } else {
     declaredStatus = declaredRecord[targetVersion];
-    if (isIncompatible(declaredStatus)) {
+    const classification = classifyCompatibilityDeclaration(declaredStatus);
+    if (classification === 'incompatible') {
       status = 'incompatible';
       reason = 'the plugin declares incompatibility with DSH ' + targetVersion;
-    } else {
+    } else if (classification === 'compatible') {
       status = 'compatible';
       reason = 'the plugin declares compatibility with DSH ' + targetVersion;
+    } else {
+      status = 'unknown';
+      reason = 'the compatibility declaration for DSH ' + targetVersion + ' is pending or unrecognized';
     }
   }
 

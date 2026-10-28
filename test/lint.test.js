@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { lintPackage, toBadge } from '../src/index.js';
+import { lintPackage, RULES, toBadge } from '../src/index.js';
 import { maskSource } from '../src/mask.js';
 
 /** Build a throwaway package on disk and lint it. */
@@ -164,6 +164,58 @@ test('E5 still flags a root artifact when files[] only lists a subdirectory', ()
   const hits = report.findings.filter((f) => f.rule === 'E5');
   assert.equal(hits.length, 1);
   assert.match(hits[0].message, /bundle patch/);
+});
+
+test('E1 ignores FormData and unrelated receivers but accepts a direct session receiver', () => {
+  const unrelated = fixture({
+    'package.json': base(),
+    'index.js': 'form.append("custom/event", value); other.append("other/event", value); foo.session.append("other/event", value);',
+  });
+  assert.equal(rules(unrelated).includes('E1'), false);
+  const direct = fixture({
+    'package.json': base(),
+    'index.js': 'session.append("custom/event", value);',
+  });
+  assert.equal(rules(direct).includes('E1'), true);
+});
+
+test('E5 includes main automatically but rejects a client omitted by empty files', () => {
+  const report = fixture({
+    'package.json': base({ files: [], exports: { '.': './index.js', './client': './client.js' } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
+  });
+  const hits = report.findings.filter((finding) => finding.rule === 'E5');
+  assert.equal(hits.length, 1);
+  assert.match(hits[0].message, /client entry/);
+});
+
+test('E5 does not invent a host entry for a config-only package', () => {
+  const report = fixture({
+    'package.json': base({ main: undefined, files: ['cordis.patch.yml'], dsh: { bundle: { patch: './cordis.patch.yml' } } }),
+    'cordis.patch.yml': '- insert: []',
+  });
+  assert.equal(rules(report).includes('E5'), false);
+});
+
+test('a throwing rule is a sanitized RULE_FAILED tool error with its cause', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-plugin-lint-rule-error-'));
+  writeFileSync(join(dir, 'package.json'), JSON.stringify(base()));
+  writeFileSync(join(dir, 'index.js'), 'export function apply() {}');
+  const index = RULES.length;
+  RULES.push({ id: 'ZX', level: 'info', title: 'broken test rule', doc: '', check() { throw new Error('root-cause'); } });
+  try {
+    assert.throws(() => lintPackage(dir), (error) => {
+      assert.equal(error.code, 'RULE_FAILED');
+      assert.equal(error.rule, 'ZX');
+      assert.equal(error.cause.message, 'root-cause');
+      assert.equal(error.message.includes('root-cause'), false);
+      return true;
+    });
+  } finally {
+    RULES.splice(index, 1);
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('W1 warns for a third-party plugin that loads a Harness client package', () => {

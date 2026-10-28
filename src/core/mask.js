@@ -119,7 +119,7 @@ export function stringAfter(strings, from, window) {
 /** Literal types passed to session.append("type", data) call sites. */
 export function appendCallSites(masked, strings) {
   const out = [];
-  const re = /\.append\(\s*/g;
+  const re = /(?<![\w$.])(?:ctx\s*\.\s*)?session\s*\.\s*append\s*\(\s*/g;
   let m;
   while ((m = re.exec(masked)) !== null) {
     const s = stringAfter(strings, m.index + m[0].length, 32);

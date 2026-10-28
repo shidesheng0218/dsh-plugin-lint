@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 import { maskSource } from './mask.js';
+import { globToRegExp } from './packlist.js';
 
 /** Directories that never hold shipped plugin code. */
 const SKIP_DIRS = new Set([
@@ -93,27 +94,19 @@ export function exportTarget(exportsField, subpath) {
   return undefined;
 }
 
-/**
- * npm packing semantics, simplified: an entry covers a path when it is the same
- * file, a parent directory, or a glob whose pattern matches. \`files\` absent means
- * everything is published.
- */
 export function filesCover(files, relPath) {
   if (files === undefined || files.length === 0) return true;
   relPath = String(relPath).replace(/^\.\//, '');
+  let covered = false;
   for (const raw of files) {
-    const pattern = String(raw).replace(/^\.\//, '').replace(/\/+$/, '');
-    if (pattern === '' ) continue;
-    if (pattern === relPath) return true;
-    if (relPath.startsWith(pattern + '/')) return true;
-    if (pattern.includes('*')) {
-      const re = new RegExp('^' + pattern
-        .replace(/[.+^$()|[\]{}\\]/g, '\\$&')
-        .replace(/\*\*\//g, '(?:.*/)?')
-        .replace(/\*\*/g, '.*')
-        .replace(/(?<!\.)\*/g, '[^/]*') + '$');
-      if (re.test(relPath)) return true;
-    }
+    let pattern = String(raw).trim().replace(/^\.\//, '').replace(/\/+$/, '');
+    const negated = pattern.startsWith('!');
+    if (negated) pattern = pattern.slice(1);
+    if (!pattern) continue;
+    const matches = pattern === relPath
+      || relPath.startsWith(pattern + '/')
+      || ((pattern.includes('*') || pattern.includes('?') || pattern.includes('[')) && globToRegExp(pattern).test(relPath));
+    if (matches) covered = !negated;
   }
-  return false;
+  return covered;
 }

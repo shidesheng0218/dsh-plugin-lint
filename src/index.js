@@ -1,5 +1,7 @@
 import { loadPackage } from './core/load.js';
+import { buildPacklist } from './core/packlist.js';
 import { RULES, EVENT_TYPES, localeMeta, DOC } from './core/rules.js';
+import { ToolError } from './shared/errors.js';
 
 export { RULES, EVENT_TYPES, DOC };
 export { maskSource } from './core/mask.js';
@@ -25,6 +27,7 @@ export function lintPackage(dir, options = {}) {
   const manifestText = pkg.text('package.json') || '';
   const ctx = Object.assign({}, pkg, {
     manifestText,
+    packlist: buildPacklist(dir, pkg.manifest),
     byPath: (rel) => pkg.jsFiles.find((f) => f.path === rel),
     localeFiles: () => (pkg.entries.localeDir ? localeMeta(dir, pkg.entries.localeDir) : []),
   });
@@ -37,17 +40,9 @@ export function lintPackage(dir, options = {}) {
     try {
       rule.check(ctx, options, push);
     } catch (error) {
-      findings.push({
-        rule: rule.id,
-        level: 'info',
-        title: rule.title,
-        doc: rule.doc,
-        file: 'package.json',
-        line: 1,
-        message: 'rule did not complete: ' + error.message,
-        evidence: '',
-        hint: 'This is a bug in dsh-plugin-lint; please report it.',
-      });
+      const failure = new ToolError('RULE_FAILED', 'lint rule ' + rule.id + ' failed', { cause: error });
+      failure.rule = rule.id;
+      throw failure;
     }
   }
 
