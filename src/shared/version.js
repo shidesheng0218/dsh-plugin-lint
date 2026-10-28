@@ -1,0 +1,4 @@
+export const CELL_SCHEMA_VERSION = 2;
+export const EXPERIMENTAL_SCHEMA_VERSION = 2;
+export const PANEL_PAYLOAD_SCHEMA_VERSION = 2;
+export const PROBE_VERSION = '0.4.0';

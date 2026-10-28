@@ -238,6 +238,15 @@ test('every report carries the checks it ran and its limits', () => {
   assert.deepEqual(Object.keys(report.summary).sort(), ['error', 'info', 'warn']);
 });
 
+test('lintPackage preserves the synchronous lint JSON v1 contract', () => {
+  const report = fixture({ 'package.json': base(), 'index.js': 'export function apply() {}' });
+  assert.equal(report instanceof Promise, false);
+  assert.equal(report.schemaVersion, 1);
+  for (const field of ['target', 'dsh', 'checks', 'summary', 'findings', 'limits']) {
+    assert.equal(Object.hasOwn(report, field), true, `missing lint v1 field: ${field}`);
+  }
+});
+
 test('the CLI lints every package inside a container directory', () => {
   // Measured failure that motivated this: CI pointed the tool at a folder of two
   // plugins and the run refused the whole folder.

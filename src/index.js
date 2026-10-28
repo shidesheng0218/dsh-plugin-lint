@@ -1,10 +1,10 @@
-import { loadPackage } from './load.js';
-import { RULES, EVENT_TYPES, localeMeta, DOC } from './rules.js';
+import { loadPackage } from './core/load.js';
+import { RULES, EVENT_TYPES, localeMeta, DOC } from './core/rules.js';
 
 export { RULES, EVENT_TYPES, DOC };
-export { maskSource } from './mask.js';
-export { loadPackage, filesCover } from './load.js';
-export { formatText, toSarif, toBadge } from './report.js';
+export { maskSource } from './core/mask.js';
+export { loadPackage, filesCover } from './core/load.js';
+export { formatText, toSarif, toBadge } from './core/report.js';
 // Experimental analysis modules: static heuristics, not runtime measurements or
 // security verdicts. Each returns `experimental: true` together with its limits.
 export { detectConflicts } from './composition.js';
