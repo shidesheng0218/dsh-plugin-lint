@@ -132,6 +132,18 @@ export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
     });
     let out = '';
     let finished = false;
+    // Keep the grace and timeout timers referenced until the promise settles.
+    // An unref'd timer does not keep the event loop alive, so on a fast or
+    // containerized scheduler the loop can be considered idle — and the test
+    // runner cancels the pending promise — before the grace timer fires. The
+    // timers are cleared in finish(), so referencing them here changes nothing
+    // about how long the process lives once the child is done.
+    const timers = new Set();
+    const later = (fn, ms) => {
+      const timer = setTimeout(() => { timers.delete(timer); fn(); }, ms);
+      timers.add(timer);
+      return timer;
+    };
     const signal = (name) => {
       if (child.pid && process.platform !== 'win32') {
         try { process.kill(-child.pid, name); return; } catch { /* fall back to the direct child */ }
@@ -141,18 +153,22 @@ export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
     const finish = () => {
       if (finished) return;
       finished = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
       signal('SIGTERM');
+      // The SIGKILL backstop is best-effort cleanup after resolve: it stays
+      // unref'd so it never extends the process lifetime past settlement.
       setTimeout(() => signal('SIGKILL'), 1500).unref();
       resolve(out);
     };
     const feed = (chunk) => {
       out += chunk;
-      if (readyRe.test(out)) setTimeout(finish, graceMs).unref();
+      if (readyRe.test(out)) later(finish, graceMs);
     };
     child.stdout.on('data', feed);
     child.stderr.on('data', feed);
     child.on('exit', () => { if (!finished) { finished = true; resolve(out); } });
-    setTimeout(finish, timeoutMs).unref();
+    later(finish, timeoutMs);
   });
 }
 
