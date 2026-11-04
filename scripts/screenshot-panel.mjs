@@ -157,16 +157,33 @@ try {
   }
 } catch { found = false; }
 
+let verificationError;
+let panelText = '';
 if (found) {
-  await page.screenshot({ path: join(OUT, 'panel.png') });
-  console.log('    saved panel.png (the section content)');
-  const panelText = await page.evaluate(() => document.body.innerText);
-  if (EXPLORE) {
-    writeFileSync(join(OUT, 'panel.txt'), panelText);
-    console.log('\n--- panel text (first 1200) ---');
-    console.log(panelText.slice(0, 1200));
+  try {
+    await page.getByText('Ecosystem snapshot', { exact: true }).waitFor({ state: 'visible', timeout: 10000 });
+    await page.locator('summary').filter({ hasText: 'Compatibility details' }).click();
+    await page.waitForTimeout(500);
+    panelText = await page.evaluate(() => document.body.innerText);
+    const required = [
+      'Ecosystem snapshot', '50 plugins', 'snapshot', 'source', 'Current', 'latest',
+      'recorded', 'legacy-unpinned', 'Plugin conflicts',
+      'Static candidates and runtime results are separate',
+    ];
+    const missing = required.filter((text) => !panelText.includes(text));
+    if (missing.length > 0) throw new Error('panel evidence is missing: ' + missing.join(', '));
+    await page.screenshot({ path: join(OUT, 'panel.png'), fullPage: true });
+    console.log('    saved panel.png (verified section content)');
+    if (EXPLORE) {
+      writeFileSync(join(OUT, 'panel.txt'), panelText);
+      console.log('\n--- panel text (first 1200) ---');
+      console.log(panelText.slice(0, 1200));
+    }
+  } catch (error) {
+    verificationError = error;
   }
 } else {
+  verificationError = new Error('the Plugin Health Center section was not found');
   console.log('    the section label was not found; see settings.txt');
 }
 if (EXPLORE) {
@@ -181,4 +198,5 @@ await browser.close();
 server.kill('SIGTERM');
 setTimeout(() => server.kill('SIGKILL'), 1500).unref();
 if (!KEEP) rmSync(home, { recursive: true, force: true });
+if (verificationError) throw verificationError;
 console.log('done');

@@ -1,0 +1,24 @@
+New Session
+⌥
+⌘
+N
+Plugins
+Workspaces
+Default workspace
+New Session
+Settings
+Into the Unknown
+Preview
+Default workspace
+Standard mode
+Describe what you want to build, / commands, @ files or sessions
+Workspace Write
+DeepSeek-V41-Flash
+High
+Preview Notice
+
+DeepSeek Harness 0.2 is still in preview, and many areas need continued improvement and refinement. We welcome feedback and suggestions from all developers and users. The new desktop app now targets a broad range of users, while developer-related advanced features can be enabled in the settings. DeepSeek Harness’s product features and plugin APIs are expected to continue rapid iteration and evolution, and will gradually stabilize over time.
+
+We look forward to exploring the limits of intelligence together with users and developers around the world, building on open-source, reusable, and composable infrastructure. We welcome everyone to bring their ideas to life with DeepSeek Harness and participate in the community to enrich the plugin ecosystem.
+
+Continue
