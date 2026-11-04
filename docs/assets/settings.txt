@@ -1,0 +1,58 @@
+New Session
+⌥
+⌘
+N
+Plugins
+Workspaces
+Default workspace
+New Session
+Settings
+Into the Unknown
+Preview
+Default workspace
+Standard mode
+Describe what you want to build, / commands, @ files or sessions
+Workspace Write
+DeepSeek-V41-Flash
+High
+Settings
+General
+Models
+Built-in plugins
+Agent presets
+Plugin Health Center
+Side card
+Open configuration file
+Close
+Permission
+Choose the default permission mode for new sessions
+Workspace Write
+Language
+English
+Appearance
+Light
+Dark
+System
+Font size
+Only affects conversation content
+14
+px
+Work details
+Choose how much detail to show for tool calls
+Detailed
+Show coding view
+Shows trajectory, code diffs, and all Agent presets
+Keyboard shortcuts
+
+View and edit available shortcuts and input actions
+
+Edit shortcuts
+Send behavior while busy
+What Enter and the Send button do while the agent is running; Cmd/Ctrl+Enter uses the other behavior
+Queue
+Performance & usage
+Choose how much performance and usage information to show
+Detailed
+Upload Session Log when using the official model API
+Help improve DeepSeek models and products.
+Current version: 0.2.0-rc.2
