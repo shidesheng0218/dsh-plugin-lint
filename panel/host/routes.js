@@ -41,12 +41,12 @@ export function registerRoutes(ctx, deps = {}) {
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: async () => {
+        const current = currentVersion();
         try {
           const latest = await latestPublishedVersion({ fetchImpl: deps.fetchImpl || fetch, now: deps.now || Date.now });
-          const current = currentVersion();
-          return Response.json({ ok: true, update: latest && isNewer(latest, current) ? { current, latest } : undefined }, { headers: { 'cache-control': 'no-store' } });
+          return Response.json({ ok: true, current, latest, update: latest && isNewer(latest, current) ? { current, latest } : undefined }, { headers: { 'cache-control': 'no-store' } });
         } catch {
-          return Response.json({ ok: true, update: undefined }, { headers: { 'cache-control': 'no-store' } });
+          return Response.json({ ok: true, current, latest: undefined, update: undefined }, { headers: { 'cache-control': 'no-store' } });
         }
       },
     },
