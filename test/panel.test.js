@@ -1,9 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { exportPublicArtifact } from '../src/matrix/export.js';
+import { createCell } from '../src/matrix/cell.js';
+import { writeCell } from '../src/matrix/cells.js';
+import { cellInput } from './matrix-helpers.js';
+import { bundlePanelData } from '../scripts/matrix/bundle-panel-data.mjs';
 
 /**
  * The panel reads a locally generated matrix snapshot, addressed by
@@ -251,4 +256,47 @@ test('an isolate is a single remove, and Electron runs the CLI as node', () => {
 
 test('the route path is stable', () => {
   assert.equal(panel.ROUTE, '/api/dsh-plugin-lint/panel');
+});
+
+test('panel data bundling verifies the public artifact and ships only aggregate data', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-panel-bundle-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const cellsDir = join(root, 'cells');
+  writeCell(cellsDir, createCell(cellInput({ composition: 'headless' })));
+  writeCell(cellsDir, createCell(cellInput({ composition: 'web' })));
+  const conflictsPath = join(root, 'conflicts.json');
+  writeFileSync(conflictsPath, JSON.stringify({
+    schemaVersion: 2,
+    tools: [{ resource: 'shared', plugins: ['demo', 'other'], status: 'candidate' }],
+    slots: [], routes: [], verified: { tools: [], slots: [], routes: [] }, errors: [],
+  }));
+  const publicDir = join(root, 'matrix/public');
+  await exportPublicArtifact({ cellsDir, conflictsPath, outDir: publicDir, runId: 'run-public', generatedAt: '2026-10-02T00:00:00.000Z', expectedCells: 2 });
+  await bundlePanelData({ root, bundledAt: '2026-10-03T00:00:00.000Z' });
+  const aggregate = JSON.parse(readFileSync(join(root, 'panel/data/aggregate.json'), 'utf8'));
+  assert.deepEqual(aggregate, JSON.parse(readFileSync(join(publicDir, 'aggregate.json'), 'utf8')));
+  assert.equal(aggregate.schemaVersion, 2);
+  assert.equal(aggregate.sourceRunId, 'run-public');
+  assert.equal(readFileSync(join(root, 'panel/data/aggregate.json'), 'utf8').includes('demo'), false);
+  const full = JSON.parse(readFileSync(join(root, 'panel/data/matrix-index.json'), 'utf8'));
+  assert.equal(full.conflicts.tools[0].resource, 'shared');
+  assert.equal(full.snapshot.bundledAt, '2026-10-03T00:00:00.000Z');
+  assert.equal(full.snapshot.source, 'matrix/public/index/latest.json');
+  const before = readFileSync(join(root, 'panel/data/aggregate.json'), 'utf8');
+  writeFileSync(join(publicDir, 'aggregate.json'), JSON.stringify({ ...aggregate, plugins: 999 }));
+  await assert.rejects(bundlePanelData({ root }), /aggregate|hash|match/i);
+  assert.equal(readFileSync(join(root, 'panel/data/aggregate.json'), 'utf8'), before);
+});
+
+test('a legacy local index stays a legacy snapshot while aggregate counts use schema v2', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-panel-legacy-bundle-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  mkdirSync(join(root, 'matrix/index'), { recursive: true });
+  writeFileSync(join(root, 'matrix/index/latest.json'), JSON.stringify(FIXTURE_INDEX));
+  await bundlePanelData({ root, bundledAt: '2026-10-03T00:00:00.000Z' });
+  const aggregate = JSON.parse(readFileSync(join(root, 'panel/data/aggregate.json'), 'utf8'));
+  assert.equal(aggregate.schemaVersion, 2);
+  assert.equal(aggregate.plugins, 1);
+  assert.deepEqual(aggregate.versions['0.2.0-rc.2'], { active: 1 });
+  assert.equal(JSON.parse(readFileSync(join(root, 'panel/data/matrix-index.json'), 'utf8')).schemaVersion, 1);
 });
