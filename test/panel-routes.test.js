@@ -79,6 +79,8 @@ test('aggregate-only payload keeps counts and snapshot metadata without registry
   assert.equal(registryFetch.calls, 0);
   const update = await registrations.get(ROUTE + '/update').fetch(postJson(ROUTE + '/update', {}));
   const updateData = await update.json();
+  assert.equal(updateData.current, '0.1.6');
+  assert.equal(updateData.latest, '99.0.0');
   assert.equal(updateData.update.latest, '99.0.0');
   assert.equal(registryFetch.calls, 1);
 });

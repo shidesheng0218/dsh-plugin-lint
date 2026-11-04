@@ -1,3 +1,38 @@
+function healthBucket(row) {
+  const state = row.health && row.health.state;
+  if (state === 'recorded-active') return 'recorded';
+  if (state === 'recorded-failure' || state === 'missing-install') return 'attention';
+  return 'unverified';
+}
+
+function summarizeEcosystem(matrix) {
+  return {
+    tallies: matrix.ecosystem?.versions || {},
+    plugins: matrix.plugins ?? 0,
+    generatedAt: matrix.generatedAt,
+    sourceRunId: matrix.sourceRunId,
+  };
+}
+
+function buildPanelModel(data) {
+  const matrix = data.matrix || {};
+  const rows = Array.isArray(data.rows) ? data.rows : [];
+  const counts = rows.reduce((result, row) => {
+    result[healthBucket(row)] += 1;
+    return result;
+  }, { recorded: 0, attention: 0, unverified: 0 });
+  return {
+    rows,
+    counts,
+    total: Number.isFinite(data.summary?.total) ? data.summary.total : rows.length,
+    issues: rows.filter((row) => healthBucket(row) === 'attention'),
+    dshVersions: matrix.dshVersions || [],
+    ecosystem: summarizeEcosystem(matrix),
+    conflicts: data.conflicts || { tools: [], slots: [], routes: [], verified: { tools: [], slots: [], routes: [] } },
+    hasPerPluginData: matrix.hasPerPluginData !== false,
+  };
+}
+
 window.__ModuleLoader__.load({
   id: '@shidesheng0218/dsh-plugin-lint-panel',
   factory: (require) => {
@@ -18,22 +53,26 @@ window.__ModuleLoader__.load({
     const DICT = {
       en: {
         title: 'Plugin Health Center',
-        description: 'See what is healthy, what needs attention, and what has not been verified yet.',
-        loading: 'Checking plugin health…',
-        error: 'Could not read plugin health: ',
+        description: 'See recorded evidence, what needs attention, and what has not been verified yet.',
+        loading: 'Loading plugin evidence…',
+        error: 'Could not read plugin evidence: ',
         panelError: 'The panel returned an error: ',
         unknownError: 'Something went wrong.',
-        healthy: 'Healthy',
+        recorded: 'Recorded',
         attention: 'Needs attention',
         unverified: 'Unverified',
-        checked: 'Last checked {date}',
+        checked: 'Payload refreshed {date}',
         issues: 'Needs attention',
         noIssues: 'No recorded failures found. Unverified plugins still need checking.',
         refresh: 'Refresh',
-        summary: '{healthy} healthy, {attention} need attention, {unverified} unverified',
+        summary: '{recorded} recorded, {attention} need attention, {unverified} unverified',
         recordedActive: 'Historical check passed',
         mixed: 'Recorded results differ between test setups; check the compatibility details.',
         evidence: 'Recorded for DSH {dsh}, plugin {version}: {status}',
+        evidenceMeta: '{composition} · {trust} · {date}',
+        ecosystem: 'Ecosystem snapshot',
+        ecosystemBody: '{plugins} plugins · snapshot {date} · source {source}',
+        updateAvailable: 'Update available: {latest} (current {current})',
         installed: 'Installed; unverified',
         confirmReinstall: 'Reinstall this plugin?',
         confirmReinstallBody: 'This runs the plugin installer again in this profile. It may change installed files and does not guarantee that the issue will be resolved.',
@@ -66,8 +105,9 @@ window.__ModuleLoader__.load({
         matrix: 'Compatibility details',
         version: 'Version',
         capabilities: 'Capabilities',
-        conflicts: 'Possible slot overlap',
-        conflictBody: 'These plugins use the same slot name; check their setup before removing anything.',
+        conflicts: 'Plugin conflicts',
+        conflictBody: 'Static candidates and runtime results are separate; a candidate does not mean the host rejected a plugin.',
+        runtimeUnverified: 'runtime not verified',
         noData: 'No plugin data is available yet.',
         current: 'Current',
         covered: 'Covered',
@@ -86,22 +126,26 @@ window.__ModuleLoader__.load({
       },
       zh: {
         title: '插件健康中心',
-        description: '查看哪些插件正常、哪些需要处理，以及哪些尚未验证。',
-        loading: '正在检查插件健康状态…',
-        error: '无法读取插件健康状态：',
+        description: '查看历史验证记录、需要处理的问题，以及尚未验证的插件。',
+        loading: '正在读取插件证据…',
+        error: '无法读取插件证据：',
         panelError: '面板返回错误：',
         unknownError: '发生了未知错误。',
-        healthy: '状态良好',
+        recorded: '历史通过',
         attention: '需要处理',
         unverified: '尚未验证',
-        checked: '上次检查：{date}',
+        checked: '数据刷新于 {date}',
         issues: '需要处理',
         noIssues: '未发现已记录的失败；尚未验证的插件仍需检查。',
         refresh: '刷新',
-        summary: '{healthy} 个状态良好，{attention} 个需要处理，{unverified} 个尚未验证',
+        summary: '{recorded} 个历史通过，{attention} 个需要处理，{unverified} 个尚未验证',
         recordedActive: '历史检查通过',
         mixed: '不同测试设置下的历史结果不一致，请查看兼容性详情。',
         evidence: '历史记录：DSH {dsh}，插件 {version}：{status}',
+        evidenceMeta: '{composition} · {trust} · {date}',
+        ecosystem: '生态兼容性快照',
+        ecosystemBody: '{plugins} 个插件 · 快照 {date} · 来源 {source}',
+        updateAvailable: '有可用更新：{latest}（当前 {current}）',
         installed: '已安装，尚未验证',
         confirmReinstall: '重新安装这个插件？',
         confirmReinstallBody: '这会在当前 profile 中再次运行插件安装器，可能更改安装文件，并不保证解决问题。',
@@ -134,8 +178,9 @@ window.__ModuleLoader__.load({
         matrix: '兼容性详情',
         version: '版本',
         capabilities: '能力',
-        conflicts: '可能存在 Slot 重叠',
-        conflictBody: '这些插件使用了相同的 slot 名称；移除前请先确认配置。',
+        conflicts: '插件冲突',
+        conflictBody: '静态候选与运行时复验结果分开显示；候选不代表宿主已拒绝插件。',
+        runtimeUnverified: '运行时未复验',
         noData: '暂时没有插件数据。',
         current: '当前',
         covered: '已覆盖',
@@ -154,14 +199,6 @@ window.__ModuleLoader__.load({
       }
     };
 
-    // A historical probe cannot establish the health of this running profile.
-    function healthBucket(row) {
-      const state = row.health && row.health.state;
-      if (state === 'healthy' || state === 'verified-active') return 'healthy';
-      if (state === 'recorded-failure' || state === 'missing-install') return 'attention';
-      return 'unverified';
-    }
-
     function healthReason(row, t) {
       const state = row.health && row.health.state;
       const keys = {
@@ -170,13 +207,15 @@ window.__ModuleLoader__.load({
         'missing-install': 'missingInstall',
         waiting: 'waiting', stale: 'stale', installed: 'bundled', mixed: 'mixed',
       };
-      if (keys[state]) return t(keys[state]);
       const evidence = row.health && row.health.evidence;
-      if (evidence) return t('evidence', {
+      const reason = keys[state] ? t(keys[state]) : evidence ? t('evidence', {
         dsh: evidence.dsh || '?', version: evidence.pluginVersion || '?',
         status: evidence.status || '?',
-      });
-      return row.health && row.health.reason || t('unverifiedReason');
+      }) : row.health && row.health.reason || t('unverifiedReason');
+      return reason + (evidence ? ' ' + t('evidenceMeta', {
+        composition: evidence.composition || '?', trust: evidence.trust || '?',
+        date: formatDate(evidence.at) || '?',
+      }) : '');
     }
 
     function errorMessage(error, fallback) {
@@ -186,9 +225,11 @@ window.__ModuleLoader__.load({
       return fallback;
     }
 
-    async function request(path, body) {
+    async function request(path, body, options = {}) {
       const response = await fetch(path, {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        ...options,
+        method: 'POST',
+        headers: { 'content-type': 'application/json', ...options.headers },
         body: JSON.stringify(body || {}),
       });
       let data;
@@ -221,6 +262,7 @@ window.__ModuleLoader__.load({
       const [actions, setActions] = React.useState({});
       const [confirmation, setConfirmation] = React.useState(null);
       const [notice, setNotice] = React.useState('');
+      const [update, setUpdate] = React.useState({ phase: 'idle' });
       const mounted = React.useRef(false);
       const confirmationRef = React.useRef(null);
       const triggerRef = React.useRef(null);
@@ -230,7 +272,7 @@ window.__ModuleLoader__.load({
         setState((previous) => ({ ...previous, refreshing: true, error: '' }));
         try {
           const data = await request(ROUTE);
-          if (mounted.current) setState({ phase: 'ready', data });
+          if (mounted.current) setState({ phase: 'ready', data, error: '' });
         } catch (error) {
           if (mounted.current) setState((previous) => ({
             ...previous, phase: previous.data ? 'ready' : 'error', refreshing: false,
@@ -246,6 +288,21 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         if (confirmation && confirmationRef.current) confirmationRef.current.focus();
       }, [confirmation]);
+      React.useEffect(() => {
+        if (!state.data) return undefined;
+        let active = true;
+        setUpdate({ phase: 'loading' });
+        request(ROUTE + '/update', {}, { priority: 'low' }).then((result) => {
+          if (active && mounted.current) setUpdate({
+            phase: 'ready',
+            info: result.update || { current: result.current, latest: result.latest },
+            update: result.update,
+          });
+        }).catch(() => {
+          if (active && mounted.current) setUpdate({ phase: 'unavailable' });
+        });
+        return () => { active = false; };
+      }, [state.data]);
 
       const dismissConfirmation = () => {
         setConfirmation(null);
@@ -258,7 +315,9 @@ window.__ModuleLoader__.load({
         setActions((previous) => ({ ...previous, [plugin]: { phase: 'working', action } }));
         setConfirmation(null);
         try {
-          await request(ROUTE + '/action', { action, plugin, confirmed: true });
+          await request(ROUTE + '/action', { action, plugin, confirmed: true }, {
+            headers: { 'x-dsh-plugin-lint-action': '1' },
+          });
           if (!mounted.current) return;
           setNotice(t(action === 'fix' ? 'reinstalled' : 'removed') + ': ' + plugin);
           setActions((previous) => ({ ...previous, [plugin]: {} }));
@@ -274,16 +333,10 @@ window.__ModuleLoader__.load({
       };
 
       const data = state.data || {};
-      const rows = Array.isArray(data.rows) ? data.rows : [];
-      const counts = rows.reduce((result, row) => {
-        result[healthBucket(row)] += 1;
-        return result;
-      }, { healthy: 0, attention: 0, unverified: 0 });
-      // Summary is supplemental: row evidence controls each visible classification.
-      const total = data.summary && Number.isFinite(data.summary.total)
-        ? data.summary.total : rows.length;
-      const issues = rows.filter((row) => healthBucket(row) === 'attention');
-      const versions = data.matrix && data.matrix.dshVersions || [];
+      const model = buildPanelModel(data);
+      const { rows, counts, total, issues, conflicts, hasPerPluginData } = model;
+      const versions = model.dshVersions;
+      const ecosystem = model.ecosystem;
       const isProtected = (row) => row.firstParty || row.name.startsWith('@deepseek-ai/')
         || row.name === '@shidesheng0218/dsh-plugin-lint-panel';
       const anyBusy = Object.values(actions).some((action) => action.phase === 'working');
@@ -315,8 +368,9 @@ window.__ModuleLoader__.load({
         if (state === 'installed') return t('installed');
         return t(healthBucket(row));
       };
-      const colorFor = (row) => healthBucket(row) === 'attention' ? T.error
-        : healthBucket(row) === 'healthy' ? T.success : T.secondary;
+      const colorFor = (row) => healthBucket(row) === 'attention' ? T.error : T.secondary;
+      const conflictEntries = ['tools', 'slots', 'routes'].flatMap((kind) =>
+        (conflicts[kind] || []).map((conflict) => ({ kind, conflict })));
 
       return React.createElement('div', {
         style: { color: T.text, maxWidth: '880px', width: '100%', lineHeight: 1.5 },
@@ -334,8 +388,15 @@ window.__ModuleLoader__.load({
         React.createElement('p', { style: { ...quiet, margin: '0 0 5px' } },
           state.phase === 'loading' ? t('loading') : t('summary', counts)),
         data.checkedAt ? React.createElement('p', {
-          style: { ...quiet, fontSize: '12px', margin: '0 0 18px' },
-        }, t('checked', { date: formatDate(data.checkedAt) })) : null),
+          style: { ...quiet, fontSize: '12px', margin: '0 0 5px' },
+        }, t('checked', { date: formatDate(data.checkedAt) })) : null,
+        update.phase === 'ready' && update.info ? React.createElement(React.Fragment, null,
+          React.createElement('p', {
+            role: 'status', style: { ...quiet, fontSize: '12px', margin: '0 0 5px' },
+          }, t('current') + ' ' + (update.info.current || t('unknown')) + ' · latest ' + (update.info.latest || t('unknown'))),
+          update.update ? React.createElement('p', {
+            role: 'status', style: { ...quiet, fontSize: '12px', margin: '0 0 18px' },
+          }, t('updateAvailable', update.update)) : null) : null),
       state.error ? React.createElement('p', {
         role: 'alert', style: { ...quiet, color: T.error },
       }, t('error') + state.error) : null,
@@ -383,7 +444,18 @@ window.__ModuleLoader__.load({
             React.createElement('div', { style: { ...quiet, fontSize: '12px' } },
               row.version || (row.firstParty ? null : t('notInstalled'))),
             React.createElement('p', { style: { ...quiet, margin: '5px 0 9px' } }, healthReason(row, t)),
+            !hasPerPluginData ? React.createElement('div', { style: quiet }, t('matrixUnavailable')) : null,
             actionButtons(row)))),
+        React.createElement('section', { style: { marginTop: '24px', borderTop: T.border, paddingTop: '14px' } },
+          React.createElement('h3', { style: heading }, t('ecosystem')),
+          React.createElement('p', { style: quiet }, t('ecosystemBody', {
+            plugins: ecosystem.plugins,
+            date: formatDate(ecosystem.generatedAt) || t('unknown'),
+            source: ecosystem.sourceRunId || t('unknown'),
+          })),
+          Object.entries(ecosystem.tallies).map(([version, tally]) =>
+            React.createElement('p', { key: version, style: { ...quiet, fontSize: '12px' } },
+              version + ': ' + Object.entries(tally).map(([status, count]) => status + ' ' + count).join(' · ')))),
         React.createElement('details', { style: { marginTop: '24px', borderTop: T.border, paddingTop: '14px' } },
           React.createElement('summary', { style: { cursor: 'pointer', fontSize: '14px', fontWeight: 600 } }, t('matrix')),
           React.createElement('p', { style: quiet }, t('historical')),
@@ -405,19 +477,32 @@ window.__ModuleLoader__.load({
                     const cells = (row.cells || []).filter((cell) => cell.dsh === version);
                     return React.createElement('td', { key: version, style: tableCell },
                       cells.length ? cells.map((cell, index) => React.createElement('div', { key: index },
-                        t(cell.status === 'active' ? 'probeActive'
-                          : cell.status === 'awaiting-service' ? 'probeWaiting' : 'probeFailure'),
-                        cell.composition ? ' (' + cell.composition + ')' : '')) : t('matrixUnavailable'));
+                        React.createElement('div', null,
+                          t(cell.status === 'active' ? 'probeActive'
+                            : cell.status === 'awaiting-service' ? 'probeWaiting' : 'probeFailure'),
+                          cell.composition ? ' (' + cell.composition + ')' : ''),
+                        React.createElement('div', { style: { ...quiet, fontSize: '11px' } },
+                          (cell.trust || '?') + ' · ' + (formatDate(cell.at) || '?')))) : t('matrixUnavailable'));
                   })))))) : null,
           React.createElement('h4', { style: { ...heading, marginTop: '18px' } }, t('capabilities')),
           rows.map((row) => React.createElement('p', { key: row.name, style: quiet },
             row.name + ': ' + ((row.audit && row.audit.observed || []).map((item) => item.capability).join(', ')
               || t('noCapabilities')))),
-          data.conflicts && data.conflicts.length ? React.createElement('section', null,
+          React.createElement('section', null,
             React.createElement('h4', { style: heading }, t('conflicts')),
             React.createElement('p', { style: quiet }, t('conflictBody')),
-            data.conflicts.map((conflict) => React.createElement('p', { key: conflict.slot, style: quiet },
-              conflict.slot + ': ' + (conflict.plugins || []).join(', ')))) : null)) : null);
+            conflictEntries.map(({ kind, conflict }) => {
+              const runtime = (conflicts.verified?.[kind] || []).filter((entry) =>
+                entry.resource === conflict.resource &&
+                (entry.plugins || []).join(',') === (conflict.plugins || []).join(','));
+              return React.createElement('p', {
+                key: kind + ':' + conflict.resource + ':' + (conflict.plugins || []).join(','),
+                style: quiet,
+              }, kind + ': ' + conflict.resource + ': ' + (conflict.plugins || []).join(', ') +
+                ' · ' + (conflict.status || 'candidate') + ' · ' +
+                (runtime.length ? runtime.map((entry) => entry.status +
+                  (entry.trust ? ' (' + entry.trust + ')' : '')).join(', ') : t('runtimeUnverified')));
+            })))) : null);
     }
 
     class Boundary extends React.Component {
