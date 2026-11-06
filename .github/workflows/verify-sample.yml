@@ -1,9 +1,16 @@
 name: verify self-reported cells
 
+# Manual only: the cells corpus is gitignored by the data policy, so a clean
+# checkout has nothing to verify. The previous weekly schedule failed every run
+# with CELL_READ_FAILED and verified nothing. Provide a checked-out corpus (or a
+# private data checkout) through the input below.
 on:
-  schedule:
-    - cron: '0 4 * * 3'
   workflow_dispatch:
+    inputs:
+      cells:
+        description: 'Existing cells directory to verify.'
+        required: true
+        default: 'matrix/cells'
 
 permissions:
   contents: read
@@ -20,8 +27,17 @@ jobs:
         with:
           node-version: '22'
 
+      - name: Require a cells corpus
+        env:
+          CELLS: ${{ inputs.cells || 'matrix/cells' }}
+        run: |
+          if [ ! -d "$CELLS" ]; then
+            echo "::error::No cells corpus at $CELLS. matrix/cells is gitignored by the data policy; check out a corpus before running this workflow."
+            exit 2
+          fi
+
       - name: Re-run a sample of self-reported cells
-        run: node scripts/matrix/verify.mjs --sample 0.2 --seed ${{ github.run_number }} --concurrency 2 --workflow verify-sample --run-id ${{ github.run_id }} --run-url ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node scripts/matrix/verify.mjs --cells "${{ inputs.cells || 'matrix/cells' }}" --sample 0.2 --seed ${{ github.run_number }} --concurrency 2 --workflow verify-sample --run-id ${{ github.run_id }} --run-url ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Upload the verification candidate
         uses: actions/upload-artifact@v4
@@ -32,7 +48,7 @@ jobs:
 
   publish:
     needs: probe
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:

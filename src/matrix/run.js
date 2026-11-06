@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { relative } from 'node:path';
+import { join, relative } from 'node:path';
 import { ToolError } from '../shared/errors.js';
 import { PROBE_VERSION } from '../shared/version.js';
 import { sha256 } from '../shared/hash.js';
@@ -88,8 +88,11 @@ export async function runMatrix({
         name: artifact.name,
         requestedVersion: artifact.requestedVersion,
         resolvedVersion: artifact.resolvedVersion,
-        integrity: artifact.integrity,
-        sourceDigest: artifact.sourceDigest,
+        // A local artifact has integrity: undefined. JSON has no undefined, and
+        // stableStringify rightly rejects it; omitting the key keeps the manifest
+        // hashable instead of aborting every local-directory run.
+        ...(artifact.integrity !== undefined ? { integrity: artifact.integrity } : {}),
+        ...(artifact.sourceDigest !== undefined ? { sourceDigest: artifact.sourceDigest } : {}),
         local: artifact.local,
       },
     });
@@ -145,7 +148,11 @@ export async function runMatrix({
     let stub;
     let observation;
     try {
-      environment = await services.createProbeEnvironment({ backend, workDir: cacheRoot });
+      environment = await services.createProbeEnvironment({
+        backend,
+        workDir: cacheRoot,
+        dshDir: task.version !== 'desktop' ? join(cacheRoot, 'dsh', task.version) : undefined,
+      });
       stub = useTools && task.composition !== 'web' ? await services.startStub({ environment, composition: task.composition }) : undefined;
       const dsh = { kind: task.version === 'desktop' ? 'desktop' : 'npm', version: task.version, source: task.version === 'desktop' ? 'desktop' : 'npm', composition: task.composition };
       observation = await services.probePackage({ artifact: task.artifact, dsh, environment, stub, tools: useTools, keep, composition: task.composition, audit: true });

@@ -46,7 +46,7 @@ v0.3.0 新增四项分析能力。四项都是**静态启发式**：读磁盘文
 
 ## 3. API 变更（新增，不改变既有导出）
 
-`src/index.js` 新增导出：
+`src/experimental/index.js` 新增导出（安装后通过 `@shidesheng0218/dsh-plugin-lint/experimental` 访问；包入口 `src/index.js` 保持十个稳定导出不变）：
 
 - `detectConflicts(packages)`
 - `analyzePerformance(pkg)`

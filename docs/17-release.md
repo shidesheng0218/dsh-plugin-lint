@@ -149,3 +149,10 @@ git log --oneline -5 -- panel/package.json
 - 两个 publish workflow 在发布前也会跑 `npm test`，所以测试不绿时发布 job 会失败（这是设计意图）。
 - `npm run e2e:official` 需要先从 npm 抓官方包，依赖网络；发布前是否作为门禁由维护者决定。
 - 根目录的一次性交接文档已在 commit `953688f` 删除，本文不再引用它们。
+
+## 10. 2026-11-06 发布治理变更
+
+- 两个 publish workflow **不再自动 bump patch**。当前版本已在 registry 时，job 输出 `publish=false` 并正常结束；发布必须来自一次经过评审的版本号变更，而不是合并的副作用。
+- 发布前门禁：`npm test` + 官方 80 包零误报基线（`--expect 80`）+ 打包安装冒烟；panel 额外做 `npm pack` → 临时 prefix 安装 → `import()` 冒烟。lint 还要求 `PROBE_VERSION` 与 `package.json` 版本一致，否则拒绝发布。
+- 两个 workflow 只在 `refs/heads/main` 上运行；`workflow_dispatch` 不再能从功能分支发布。
+- 尚未对账：lint `0.3.0` 与 panel `0.1.6` 仍高于 registry（0.1.0 / 0.1.5）。本次变更不会发布它们；版本号需要按 0.4.0 / 0.2.0 的计划先对齐，再走一次显式发布。

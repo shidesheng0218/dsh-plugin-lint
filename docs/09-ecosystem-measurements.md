@@ -76,6 +76,12 @@ node scripts/build-report.mjs --top 100                            # 静态检�
 
 ## 5. 点名数据的处理
 
-仓库里出现过的逐包结论已从 **git 历史**中移除（不只是工作区）。原因是这些内容会对具体维护者形成公开点名，而项目选择先不这么做。
+逐包结论已从**工作区与 origin 的最新树**中移除。原因是这些内容会对具体维护者形成公开点名，而项目选择先不这么做。
+
+**2026-11-06 复核：清理并不彻底，以下事实必须和上面的政策一起读。**
+
+- commit `15c0529` 添加的 `panel/data/matrix-index.json.tmp`（8,832 行 / 259,641 字节，50 个包名 + 200 个逐格结论）仍是 `origin/main` 的祖先；`669fc17` 只删除了路径。该 blob 仍可通过 `raw.githubusercontent.com/shidesheng0218/dsh-plugin-lint/15c0529/panel/data/matrix-index.json.tmp` 取到（HTTP 200）。彻底移除需要重写公共历史并强推，尚未执行。
+- 本地 `refs/remotes/{archive,data}/main` 与仓库外的 335 KB git bundle 指向私有数据仓库的 `7b23c4a`，其中包含 228 个命名 cell、68 个 notify 文件和 51 个维护者邮箱。该 commit 不在 `origin` 上（raw 返回 404），但任何持有该 clone 或 bundle 的人都能恢复。
+- GitHub Actions 上仍有三个未过期的 `matrix-cells` artifact（2026-10-19、10-26、11-02），包含原始逐包 cell；任何已登录 GitHub 用户都可下载。
 
 需要时任何人都能在本地重建同样的数据（命令见 §4）。**数据属于跑探针的人，不属于这个仓库。**

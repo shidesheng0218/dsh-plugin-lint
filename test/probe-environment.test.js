@@ -117,6 +117,13 @@ test('docker hardens every run, separates network phases, and force-cleans conta
   assert.equal(runs[0].args.includes('--network=bridge'), true);
   assert.equal(runs[1].args.includes('--network=none'), true);
   assert.equal(runs[0].args.includes('--env=NPM_TOKEN=no'), false);
+  // The slim image has no pnpm; the shim must be in the writable profile mount
+  // and first on PATH so `dsh plugin add` can find it.
+  assert.equal(existsSync(join(environment.profileDir, '.probe-bin', 'pnpm')), true);
+  assert.equal(runs[0].args.some((arg) => arg.startsWith('--env=PATH=/profile/.probe-bin:')), true);
+  // Docker mounts /tmp noexec; the native-addon cache must be disabled or the
+  // loader cannot dlopen its copied .node file.
+  assert.equal(runs[0].args.includes('--env=NARB_DISABLE_NATIVE_CACHE=1'), true);
   await environment.destroy();
   const removals = runner.calls.filter((call) => call.args[0] === 'rm');
   assert.equal(removals.length >= 2, true);
@@ -208,4 +215,44 @@ test('the tools stub uses an internal Docker network and replays captured reques
   assert.equal(stub.seen.length, 1);
   await environment.destroy();
   assert.equal(runner.calls.some((call) => call.args[0] === 'network' && call.args[1] === 'rm'), true);
+});
+
+test('docker web boots stop when the ready line appears instead of waiting for the timeout', async (t) => {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-docker-ready-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  let finishRun;
+  const calls = [];
+  const runner = async (command, args, options) => {
+    calls.push({ command, args, options });
+    if (args[0] === 'version') return { stdout: '27.0.0', stderr: '' };
+    if (args[0] === 'logs') return { stdout: 'dsh web: http://127.0.0.1:5000/', stderr: '' };
+    if (args[0] === 'kill') { finishRun?.(); return { stdout: '', stderr: '' }; }
+    if (args[0] === 'run') return new Promise((resolve) => { finishRun = () => resolve({ stdout: '', stderr: '' }); });
+    return { stdout: '', stderr: '' };
+  };
+  const environment = await createProbeEnvironment({ backend: 'docker', workDir: root, runner });
+  const started = Date.now();
+  const result = await environment.boot({ dsh, args: ['--profile', 'web'], readyRe: WEB_READY, graceMs: 1 });
+  assert.equal(result.ready, true);
+  assert.match(result.out, /dsh web:/);
+  assert.equal(calls.some((call) => call.args[0] === 'kill'), true, 'the ready container is stopped');
+  assert.ok(Date.now() - started < 5000, 'a ready boot does not wait for the environment timeout');
+  await environment.destroy();
+});
+
+test('a shared dshDir is reused across environments and survives destroy', async (t) => {
+  const workDir = mkdtempSync(join(tmpdir(), 'dsh-shared-work-'));
+  const shared = mkdtempSync(join(tmpdir(), 'dsh-shared-cache-'));
+  t.after(() => {
+    rmSync(workDir, { recursive: true, force: true });
+    rmSync(shared, { recursive: true, force: true });
+  });
+  const runner = fakeRunner(async (command, args) => ({ stdout: args[0] === 'version' ? '27.0.0' : '', stderr: '' }));
+  const environment = await createProbeEnvironment({ backend: 'docker', workDir, dshDir: shared, runner });
+  assert.equal(environment.dshDir, shared);
+  await environment.boot({ dsh, args: ['--profile', 'headless', 'probe'] });
+  const run = runner.calls.find((call) => call.args[0] === 'run');
+  assert.equal(run.args.some((arg) => arg.endsWith(shared + ':/dsh:ro')), true, 'the shared tree is mounted');
+  await environment.destroy();
+  assert.equal(existsSync(shared), true, 'the shared harness install is not deleted with the cell');
 });

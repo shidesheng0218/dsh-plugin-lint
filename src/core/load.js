@@ -24,14 +24,22 @@ export function loadPackage(dir) {
   // "index.js was declared and is missing". A static asset package (measured:
   // @deepseek-ai/dsh-web-frontend exports only ./dist/*) has no host entry at all,
   // and flagging it would be a false positive.
-  const declaredHost = firstString(manifest.main) || exportTarget(manifest.exports, '.');
+  // Node resolves exports["."] before main; the loader imports the package by
+  // name and follows the same order. Keeping main first made a stale main an
+  // error even when exports["."] was the entry that actually loaded.
+  const mainEntry = firstString(manifest.main);
+  const declaredHost = exportTarget(manifest.exports, '.') || mainEntry;
   const entries = {
     host: norm(declaredHost || 'index.js'),
     // A configuration-only bundle (dsh.bundle) needs no host entry at all
-    // (references/mcp-bundle.md): only main/exports["."] make the host file
+    // (references/mcp-bundle.md): only exports["."]/main make the host file
     // mandatory, and only they may turn a missing index.js into an E3 error.
     hostDeclared: Boolean(declaredHost),
-    client: norm(exportTarget(manifest.exports, './client') || (manifest.dsh && manifest.dsh.client ? 'client.js' : undefined)),
+    main: norm(mainEntry),
+    mainDeclared: Boolean(mainEntry),
+    // The browser half resolves only a string or a string default; import and
+    // require conditions are Node-only and the client registry rejects them.
+    client: norm(clientExportTarget(manifest.exports, './client') || (manifest.dsh && manifest.dsh.client ? 'client.js' : undefined)),
     patch: norm(manifest.dsh && manifest.dsh.bundle ? firstString(manifest.dsh.bundle.patch) : undefined),
     icon: norm(firstString(manifest.icon)),
     localeDir: existsSync(join(dir, 'locale')) ? 'locale' : undefined,
@@ -83,7 +91,7 @@ function firstString(value) {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
-/** Resolve an exports subpath to a file path, accepting the string and {default} forms. */
+/** Resolve an exports subpath to a file path, accepting the Node entry forms. */
 export function exportTarget(exportsField, subpath) {
   if (exportsField === undefined || exportsField === null) return undefined;
   if (typeof exportsField === 'string') return subpath === '.' ? exportsField : undefined;
@@ -91,6 +99,21 @@ export function exportTarget(exportsField, subpath) {
   if (entry === undefined) return undefined;
   if (typeof entry === 'string') return entry;
   if (entry && typeof entry === 'object') return firstString(entry.default) || firstString(entry.import) || firstString(entry.require);
+  return undefined;
+}
+
+/**
+ * Resolve the browser client entry the way the host's ClientModuleRegistry does:
+ * a string, or an object with a string `default`. import/require are Node-only
+ * conditions and are rejected by the client resolver.
+ */
+export function clientExportTarget(exportsField, subpath = './client') {
+  if (exportsField === undefined || exportsField === null) return undefined;
+  if (typeof exportsField === 'string') return subpath === '.' ? exportsField : undefined;
+  const entry = exportsField[subpath];
+  if (entry === undefined) return undefined;
+  if (typeof entry === 'string') return entry;
+  if (entry && typeof entry === 'object') return firstString(entry.default);
   return undefined;
 }
 

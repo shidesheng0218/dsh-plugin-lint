@@ -76,7 +76,7 @@ test('glob and negated files rules do not suffer sequential replacement', (t) =>
   assert.equal(globToRegExp('*.js').test('lib/nested.js'), false);
 });
 
-test('root npmignore excludes files and directories without hiding main', (t) => {
+test('a files array disables the root npmignore, matching npm-packlist', (t) => {
   const { dir, manifest } = packageFixture(t, {
     'package.json': base({ files: ['**/*'] }),
     '.npmignore': 'client.js\nlocale/\n',
@@ -86,8 +86,48 @@ test('root npmignore excludes files and directories without hiding main', (t) =>
   });
   const packlist = buildPacklist(dir, manifest);
   assert.equal(hasPackedFile(packlist, 'index.js'), true);
+  // npm-packlist sets the root .npmignore to null when package.json has files.
+  assert.equal(hasPackedFile(packlist, 'client.js'), true);
+  assert.equal(hasPackedFile(packlist, 'locale/en.json'), true);
+});
+
+test('without files, the root npmignore excludes files and directories', (t) => {
+  const { dir, manifest } = packageFixture(t, {
+    'package.json': base(),
+    '.npmignore': 'client.js\nlocale/\n',
+    'index.js': '',
+    'client.js': '',
+    'locale/en.json': '{}',
+  });
+  const packlist = buildPacklist(dir, manifest);
+  assert.equal(hasPackedFile(packlist, 'index.js'), true);
   assert.equal(hasPackedFile(packlist, 'client.js'), false);
   assert.equal(hasPackedFile(packlist, 'locale/en.json'), false);
+});
+
+test('without npmignore, npm falls back to gitignore', (t) => {
+  const { dir, manifest } = packageFixture(t, {
+    'package.json': base(),
+    '.gitignore': 'client.js\n',
+    'index.js': '',
+    'client.js': '',
+  });
+  const packlist = buildPacklist(dir, manifest);
+  assert.equal(hasPackedFile(packlist, 'index.js'), true);
+  assert.equal(hasPackedFile(packlist, 'client.js'), false);
+});
+
+test('a nested npmignore still applies when files is present', (t) => {
+  const { dir, manifest } = packageFixture(t, {
+    'package.json': base({ files: ['**/*'] }),
+    'index.js': '',
+    'lib/keep.js': '',
+    'lib/drop.js': '',
+    'lib/.npmignore': 'drop.js\n',
+  });
+  const packlist = buildPacklist(dir, manifest);
+  assert.equal(hasPackedFile(packlist, 'lib/keep.js'), true);
+  assert.equal(hasPackedFile(packlist, 'lib/drop.js'), false);
 });
 
 const differentialArtifacts = ['index.js', 'lib/index.js', 'client.js', 'cordis.patch.yml', 'icon.png', 'locale/en.json'];
@@ -115,6 +155,16 @@ test('representative artifacts match real npm pack dry-run output', async (t) =>
     {
       'package.json': base(),
       '.npmignore': 'client.js\nlocale/\n',
+      'index.js': '', 'client.js': '', 'cordis.patch.yml': '', 'icon.png': '', 'locale/en.json': '{}',
+    },
+    {
+      'package.json': base({ files: ['**/*'] }),
+      '.npmignore': 'client.js\nlocale/\n',
+      'index.js': '', 'client.js': '', 'cordis.patch.yml': '', 'icon.png': '', 'locale/en.json': '{}',
+    },
+    {
+      'package.json': base(),
+      '.gitignore': 'client.js\n',
       'index.js': '', 'client.js': '', 'cordis.patch.yml': '', 'icon.png': '', 'locale/en.json': '{}',
     },
   ];

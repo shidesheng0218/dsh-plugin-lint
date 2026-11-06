@@ -9,13 +9,12 @@
  * --json the script prints one JSON document on stdout and nothing else.
  */
 
+import { loadPackage, lintPackage } from '../src/index.js';
 import {
-  loadPackage,
-  lintPackage,
   detectConflicts,
   analyzePerformance,
   analyzeSecurityDeep,
-} from '../src/index.js';
+} from '../src/experimental/index.js';
 
 const args = process.argv.slice(2);
 const json = args.includes('--json');

@@ -47,7 +47,15 @@ export function createActionHandler(deps = {}) {
       if (contentType !== 'application/json') return Response.json({ ok: false, error: { code: 'UNSUPPORTED_MEDIA_TYPE', message: 'JSON is required' } }, { status: 415 });
       if (request.headers.get('x-dsh-plugin-lint-action') !== '1') return Response.json({ ok: false, error: { code: 'ACTION_HEADER_REQUIRED', message: 'The explicit action header is required' } }, { status: 400 });
       const origin = request.headers.get('origin');
-      if (origin && new URL(origin).host !== new URL(request.url).host) return Response.json({ ok: false, error: { code: 'ORIGIN_MISMATCH', message: 'Cross-origin requests are not allowed' } }, { status: 403 });
+      if (origin) {
+        // The host bridge rewrites the request URL to http://dsh.internal, so
+        // comparing Origin against request.url rejected every legitimate POST
+        // from `dsh web`. The forwarded Host header is the real authority.
+        let originHost;
+        try { originHost = new URL(origin).host; } catch { originHost = undefined; }
+        const expectedHost = request.headers.get('host') || new URL(request.url).host;
+        if (originHost !== expectedHost) return Response.json({ ok: false, error: { code: 'ORIGIN_MISMATCH', message: 'Cross-origin requests are not allowed' } }, { status: 403 });
+      }
       const body = await request.json();
       ({ action, plugin } = body);
       if (body.confirmed !== true) return Response.json({ ok: false, error: { code: 'CONFIRMATION_REQUIRED', message: 'Explicit confirmation is required' } }, { status: 400 });

@@ -1,11 +1,10 @@
 name: publish-panel
 
-# Publishes the panel whenever its package changes on main.
-#
-# The matrix snapshot is baked into the panel package, so a data refresh is a
-# panel release. The job bumps the patch version when the current one is already
-# on npm, commits the bump back to main with a marker that stops this workflow
-# from re-triggering, and publishes with provenance.
+# Publishes the panel only when a NEW version reaches main. A push that does not
+# change panel/package.json is a no-op, so a data or code change does not ship a
+# package by itself. The gate packs the panel, installs the tarball into a
+# temporary prefix and imports the entry, which catches boundary regressions
+# that unit tests cannot see.
 on:
   push:
     branches: [main]
@@ -14,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 concurrency:
@@ -23,10 +22,7 @@ concurrency:
 
 jobs:
   publish:
-    # Guard against the bump commit re-triggering this job. Match the subject
-    # prefix, not a marker anywhere in the message — the first version used
-    # contains(), and a commit body that merely described the marker matched it.
-    if: "!startsWith(github.event.head_commit.message, 'chore(panel): publish')"
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,12 +34,43 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Decide whether this panel version is new
+        id: release
+        working-directory: panel
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          current=$(node -p "require('./package.json').version")
+          if npm view "$name@$current" version >/dev/null 2>&1; then
+            echo "$name@$current is already on npm; bump panel/package.json in a reviewed change to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$name@$current is new; it must pass the gates before publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Unit tests
         run: npm test
 
-      # Fail before the version bump, not after it: a missing or placeholder
-      # token must not leave an unpublished bump commit on main.
+      - name: Packed-panel import smoke test
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          cd panel
+          npm pack --silent
+          mkdir -p /tmp/panel-smoke && cd /tmp/panel-smoke
+          npm init -y >/dev/null 2>&1
+          npm install --silent "$GITHUB_WORKSPACE"/panel/*.tgz
+          node --input-type=module -e "
+            const pkg = await import('@shidesheng0218/dsh-plugin-lint-panel');
+            if (typeof pkg.apply !== 'function') {
+              console.error('the packed panel entry does not export apply()');
+              process.exit(1);
+            }
+          "
+
       - name: Check the registry token
+        if: steps.release.outputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -53,29 +80,8 @@ jobs:
           fi
           npm whoami
 
-      - name: Bump the panel version when it is already published
-        id: version
-        working-directory: panel
-        run: |
-          set -euo pipefail
-          name=$(node -p "require('./package.json').name")
-          current=$(node -p "require('./package.json').version")
-          if npm view "$name@$current" version >/dev/null 2>&1; then
-            echo "$name@$current is already on npm; bumping a patch"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            npm version patch --no-git-tag-version
-            bumped=$(node -p "require('./package.json').version")
-            git add package.json
-            git commit -m "chore(panel): publish $name@$bumped"
-            git push
-            echo "version=$bumped" >> "$GITHUB_OUTPUT"
-          else
-            echo "$name@$current is new; publishing it"
-            echo "version=$current" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish
+        if: steps.release.outputs.publish == 'true'
         working-directory: panel
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

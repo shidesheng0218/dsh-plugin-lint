@@ -25,14 +25,25 @@ export function maskSource(text) {
     for (let k = from; k < to; k++) if (chars[k] !== NL) chars[k] = SP;
   };
   // A '/' starts a regex only where a value may begin; otherwise it is division.
-  const regexAllowed = (prev) => prev === '' || '(,=:[!&|?{};+-*%<>~^'.indexOf(prev) >= 0;
-  const lastMeaningful = (idx) => {
-    for (let k = idx - 1; k >= 0; k--) {
-      const c = maskedChars[k];
-      if (c === SP || c === NL || c === '\t') continue;
-      return c;
+  // Two cases the naive "previous character" test gets wrong:
+  //   a++ / b   - the first slash is division, and treating it as a regex would
+  //               swallow the following "//" comment into the masked view.
+  //   return /re/ - the previous character is a letter, but a keyword allows a
+  //               regex here.
+  const REGEX_KEYWORDS = /(?:^|[^\w$])(?:return|typeof|instanceof|case|delete|void|throw|new|in|of|do|else|yield|await)$/;
+  const regexAllowed = (idx) => {
+    let k = idx - 1;
+    while (k >= 0 && (maskedChars[k] === SP || maskedChars[k] === NL || maskedChars[k] === '\t')) k -= 1;
+    if (k < 0) return true;
+    const prev = maskedChars[k];
+    if ('(,=:[!&|?{};+-*%<>~^'.indexOf(prev) >= 0) {
+      if ((prev === '+' || prev === '-') && maskedChars[k - 1] === prev) return false;
+      return true;
     }
-    return '';
+    if (!/[\w$]/.test(prev)) return false;
+    let wordStart = k;
+    while (wordStart >= 0 && /[\w$]/.test(maskedChars[wordStart])) wordStart -= 1;
+    return REGEX_KEYWORDS.test(maskedChars.slice(wordStart + 1, k + 1).join(''));
   };
 
   let i = 0;
@@ -79,7 +90,8 @@ export function maskSource(text) {
       continue;
     }
 
-    if (c === '/' && regexAllowed(lastMeaningful(i))) {
+    if (c === '/' && regexAllowed(i)) {
+      const from = i;
       i += 1;
       let inClass = false;
       while (i < n) {
@@ -90,6 +102,11 @@ export function maskSource(text) {
         else if (text[i] === NL) break;
         i += 1;
       }
+      // A regex body is data, not code: braces and quotes inside it must not
+      // reach the structural view, and a literal "session.append(" inside it
+      // must not look like a call site.
+      blank(from, i, maskedChars);
+      blank(from, i, structuralChars);
       continue;
     }
     i += 1;
@@ -116,16 +133,50 @@ export function stringAfter(strings, from, window) {
   return undefined;
 }
 
-/** Literal types passed to session.append("type", data) call sites. */
+/** Literal types passed to Session.append(type, data). */
 export function appendCallSites(masked, strings) {
   const out = [];
-  const re = /(?<![\w$.])(?:ctx\s*\.\s*)?session\s*\.\s*append\s*\(\s*/g;
+  // Session receivers the host exposes: bare `session`, ctx.session,
+  // agent.session and this.session. A property named `session` on an unrelated
+  // object (formData.session) is not a Session, so only these names count.
+  const re = /(?<![\w$.])(?:(?:ctx|agent|this)\s*\.\s*)?session\s*\.\s*append\s*\(\s*/g;
   let m;
   while ((m = re.exec(masked)) !== null) {
-    const s = stringAfter(strings, m.index + m[0].length, 32);
-    if (s) out.push({ type: s.value, index: s.start, line: s.line });
+    if (insideString(strings, m.index)) continue;
+    const s = stringAt(strings, m.index + m[0].length);
+    if (!s) continue;
+    if (s.value.includes('${')) continue;
+    out.push({ type: s.value, index: s.start, line: s.line });
   }
   return out;
+}
+
+/** True when `index` falls inside a string literal (where the text is data). */
+function insideString(strings, index) {
+  let lo = 0;
+  let hi = strings.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = strings[mid];
+    if (index < s.start) hi = mid - 1;
+    else if (index >= s.end) lo = mid + 1;
+    else return true;
+  }
+  return false;
+}
+
+/** The string literal whose opening quote is exactly at `index`, if any. */
+function stringAt(strings, index) {
+  let lo = 0;
+  let hi = strings.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const s = strings[mid];
+    if (s.start < index) lo = mid + 1;
+    else if (s.start > index) hi = mid - 1;
+    else return s;
+  }
+  return undefined;
 }
 
 /** The balanced brace block that starts at or after `index`, on the structural view. */
