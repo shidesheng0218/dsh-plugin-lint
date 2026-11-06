@@ -49,7 +49,10 @@ export function apply(ctx) {
   // Render with whatever local data exists, then refresh in the background.
   // A failed refresh must never affect the panel: it is fire-and-forget.
   maybeRefreshInBackground({ cacheDir: cacheDir() });
-  registerRoutes(ctx);
+  // Pass the resolvers explicitly: the route module's own defaults only honour
+  // options supplied by a caller, so registering without them rendered an empty
+  // matrix and rejected every action with 400.
+  registerRoutes(ctx, { payload, installedBundles });
 }
 
 export { installedBundles, currentVersion, runningDshVersion, runningProfileName, isNewer, actionCommand, ROUTE };

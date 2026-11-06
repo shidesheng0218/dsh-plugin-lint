@@ -1,6 +1,24 @@
 import { ToolError } from '../shared/errors.js';
 import { validateCell, validateIndex } from './schema.js';
 
+/**
+ * JSON has no `undefined`. A cell that was probed without the tool inventory or
+ * without a system prompt would otherwise put `undefined` into the index, and
+ * the canonical hash (stableStringify) throws on it — so the artifact could be
+ * written but never verified. Drop those keys instead of inventing a value.
+ */
+function compact(value) {
+  if (Array.isArray(value)) return value.map(compact);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const [key, entry] of Object.entries(value)) {
+      if (entry !== undefined) out[key] = compact(entry);
+    }
+    return out;
+  }
+  return value;
+}
+
 export function buildIndex(cells, { generatedAt = new Date().toISOString(), source = {} } = {}) {
   const grouped = new Map();
   const dshVersions = new Set();
@@ -46,7 +64,8 @@ export function buildIndex(cells, { generatedAt = new Date().toISOString(), sour
     plugins,
     conflicts: source.conflicts || { tools: [], slots: [], routes: [] },
   };
-  const validation = validateIndex(index);
+  const clean = compact(index);
+  const validation = validateIndex(clean);
   if (!validation.ok) throw new ToolError('INDEX_INPUT_INVALID', validation.errors.join('; '));
-  return index;
+  return clean;
 }

@@ -1,9 +1,13 @@
-import { currentVersion, profileSnapshot } from './profile.js';
+import { currentVersion, profileSnapshot, installedBundles } from './profile.js';
 import { loadMatrix } from './matrix.js';
 import { createPayload } from './payload.js';
 import { isNewer, latestPublishedVersion } from './update.js';
 import { createActionHandler } from './actions.js';
 
+// Only honours options supplied by the caller. panel/index.js passes the real
+// `payload` resolver, which adds the profile cache and the bundled snapshot.
+// Calling registerRoutes without deps from a production entry would render an
+// empty matrix; test/panel-assembly.test.js pins the real entry point.
 function defaultPayload(options) {
   return createPayload({
     profile: profileSnapshot(),
@@ -34,7 +38,10 @@ export function registerRoutes(ctx, deps = {}) {
       path: ROUTE + '/action',
       methods: ['POST'],
       requestBody: 'buffered',
-      fetch: createActionHandler(deps),
+      // The action handler resolves the installed version through this
+      // dependency. Without it every request failed with 400 before reaching
+      // the executor, so the default must be the real reader.
+      fetch: createActionHandler(Object.assign({ installedBundles }, deps)),
     },
     [ROUTE + '/update']: {
       path: ROUTE + '/update',
