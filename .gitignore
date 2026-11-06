@@ -7,6 +7,7 @@ dist/
 fixtures/
 matrix/cells/
 matrix/index/
+matrix/public/
 node_modules/
 notify/
 panel/data/matrix-index.json

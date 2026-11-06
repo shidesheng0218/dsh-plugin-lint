@@ -357,3 +357,95 @@ test('a badge turns red on errors', () => {
   assert.match(svg, /1 error/, 'the count is in the badge');
   assert.match(svg, /#cf222e/, 'an error is red');
 });
+
+test('E1 ignores an append call in a comment after a postfix division', () => {
+  const report = fixture({
+    'package.json': base(),
+    'index.js': 'let b = 2;\nconst y = b++ / 2; // session.append("fake/type", data)\nexport { y };',
+  });
+  assert.equal(rules(report).includes('E1'), false);
+});
+
+test('E1 ignores a session.append call that is only text inside a string', () => {
+  const report = fixture({
+    'package.json': base(),
+    'index.js': 'export const doc = "use session.append(" + "fake/type" + ") to log";',
+  });
+  assert.equal(rules(report).includes('E1'), false);
+});
+
+test('E1 ignores a dynamic first argument and its payload string', () => {
+  const report = fixture({
+    'package.json': base(),
+    'index.js': 'export function apply(session, type) { session.append(type, { mime: "image/png" }); }',
+  });
+  assert.equal(rules(report).includes('E1'), false);
+});
+
+test('E1 checks agent.session and this.session receivers', () => {
+  const viaAgent = fixture({
+    'package.json': base(),
+    'index.js': 'export function apply(agent) { agent.session.append("demo/custom", {}); }',
+  });
+  assert.equal(rules(viaAgent).includes('E1'), true);
+  const viaThis = fixture({
+    'package.json': base(),
+    'index.js': 'export class P { run() { this.session.append("demo/custom", {}); } }',
+  });
+  assert.equal(rules(viaThis).includes('E1'), true);
+});
+
+test('E2 accepts the <package>/client id the loader normalises', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': './client.js' }, dsh: { client: { platform: 'web' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin/client", factory: () => ({}) });',
+  });
+  assert.equal(rules(report).includes('E2'), false);
+});
+
+test('E2 rejects a patch row that belongs to another package', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': './client.js' }, dsh: { client: { platform: 'web' }, bundle: { patch: './cordis.patch.yml' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "@scope/other", factory: () => ({}) });',
+    'cordis.patch.yml': ['- insert:', '    - id: other', '      name: "@scope/other"', ''].join('\n'),
+  });
+  assert.equal(rules(report).includes('E2'), true);
+});
+
+test('E3 follows exports["."] precedence over a stale main', () => {
+  const report = fixture({
+    'package.json': base({ main: 'missing.js', exports: { '.': './index.js' } }),
+    'index.js': 'export function apply() {}',
+  });
+  assert.equal(report.findings.some((f) => f.rule === 'E3' && f.level === 'error'), false);
+});
+
+test('E3 checks exports["."] when main exists but exports is broken', () => {
+  const report = fixture({
+    'package.json': base({ main: 'index.js', exports: { '.': './missing.js' } }),
+    'index.js': 'export function apply() {}',
+  });
+  const hit = report.findings.find((f) => f.rule === 'E3' && f.level === 'error');
+  assert.ok(hit, 'expected an error for the broken exports entry');
+  assert.match(hit.message, /missing\.js/);
+});
+
+test('E4 rejects an import-only client export the host cannot resolve', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': { import: './client.js' } }, dsh: { client: { platform: 'web' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
+  });
+  assert.ok(report.findings.some((f) => f.rule === 'E4' && f.level === 'error'));
+});
+
+test('E4 accepts a string-default client export', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './client': { default: './client.js', import: './client.js' } }, dsh: { client: { platform: 'web' } } }),
+    'index.js': 'export function apply() {}',
+    'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
+  });
+  assert.equal(rules(report).includes('E4'), false);
+});

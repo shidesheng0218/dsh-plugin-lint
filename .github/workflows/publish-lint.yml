@@ -1,8 +1,10 @@
 name: publish-lint
 
-# Publishes the linter whenever its package changes on main. Same shape as
-# publish-panel: bump a patch when the version is already on npm, commit the
-# bump back under a subject prefix this job skips, publish with provenance.
+# Publishes the linter only when a NEW version reaches main. A push that does
+# not change the version is a no-op: a release is an intentional version bump in
+# a reviewed change, not a side effect of merging. The gate runs the unit tests,
+# the official zero-false-positive baseline and a packed-tarball smoke test
+# before npm sees anything.
 on:
   push:
     branches: [main]
@@ -15,7 +17,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
   id-token: write
 
 concurrency:
@@ -24,7 +26,7 @@ concurrency:
 
 jobs:
   publish:
-    if: "!startsWith(github.event.head_commit.message, 'chore(lint): publish')"
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,12 +38,57 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Decide whether this version is new
+        id: release
+        run: |
+          set -euo pipefail
+          name=$(node -p "require('./package.json').name")
+          current=$(node -p "require('./package.json').version")
+          if npm view "$name@$current" version >/dev/null 2>&1; then
+            echo "$name@$current is already on npm; bump package.json in a reviewed change to release."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$name@$current is new; it must pass the gates before publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Unit tests
         run: npm test
 
-      # Fail before the version bump, not after it: a missing or placeholder
-      # token must not leave an unpublished bump commit on main.
+      - name: Probe version must match the package version
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          node --input-type=module -e "
+            import { PROBE_VERSION } from './src/shared/version.js';
+            import { readFileSync } from 'node:fs';
+            const version = JSON.parse(readFileSync('package.json', 'utf8')).version;
+            if (PROBE_VERSION !== version) {
+              console.error('PROBE_VERSION ' + PROBE_VERSION + ' does not match package.json ' + version);
+              console.error('Cells produced by this build would claim a probe version they are not.');
+              process.exit(1);
+            }
+          "
+
+      - name: Fetch the official packages
+        if: steps.release.outputs.publish == 'true'
+        run: node scripts/fetch-official-from-npm.mjs --limit 80
+
+      - name: Zero-false-positive baseline
+        if: steps.release.outputs.publish == 'true'
+        run: node scripts/e2e-official.mjs --expect 80
+
+      - name: Packed-tarball smoke test
+        if: steps.release.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          npm pack --silent
+          mkdir -p /tmp/pack-smoke && cd /tmp/pack-smoke
+          npm init -y >/dev/null 2>&1
+          npm install --silent "$GITHUB_WORKSPACE"/*.tgz
+          ./node_modules/.bin/dsh-plugin-lint "$GITHUB_WORKSPACE/panel" --quiet --no-color
+
       - name: Check the registry token
+        if: steps.release.outputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
@@ -51,28 +98,8 @@ jobs:
           fi
           npm whoami
 
-      - name: Bump the version when it is already published
-        id: version
-        run: |
-          set -euo pipefail
-          name=$(node -p "require('./package.json').name")
-          current=$(node -p "require('./package.json').version")
-          if npm view "$name@$current" version >/dev/null 2>&1; then
-            echo "$name@$current is already on npm; bumping a patch"
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            npm version patch --no-git-tag-version
-            bumped=$(node -p "require('./package.json').version")
-            git add package.json
-            git commit -m "chore(lint): publish $name@$bumped"
-            git push
-            echo "version=$bumped" >> "$GITHUB_OUTPUT"
-          else
-            echo "$name@$current is new; publishing it"
-            echo "version=$current" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Publish
+        if: steps.release.outputs.publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npm publish --provenance

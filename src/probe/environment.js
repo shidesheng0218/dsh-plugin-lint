@@ -10,6 +10,7 @@ import { materializeArtifact } from './environment/materialize.js';
 export async function createProbeEnvironment({
   backend = 'auto',
   workDir,
+  dshDir: sharedDshDir,
   timeoutMs = 180000,
   network = 'none',
   runner = execFileRunner,
@@ -19,7 +20,9 @@ export async function createProbeEnvironment({
   const root = mkdtempSync(join(parent, 'dsh-probe-'));
   const sourceDir = join(root, 'source');
   const profileDir = join(root, 'profile');
-  const dshDir = join(root, 'dsh');
+  // A shared dshDir (one per DSH version under the cache root) lets consecutive
+  // probe cells reuse the harness install instead of downloading it per cell.
+  const dshDir = sharedDshDir ? resolve(sharedDshDir) : join(root, 'dsh');
   for (const dir of [sourceDir, profileDir, dshDir]) mkdirSync(dir, { recursive: true });
   chmodSync(root, 0o755);
   chmodSync(sourceDir, 0o755);

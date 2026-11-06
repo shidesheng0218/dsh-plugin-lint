@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
-import { basename, join } from 'node:path';
+import { basename, join, relative } from 'node:path';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', 'CVS', '.svn', '.hg']);
 const REGEX_SPECIAL = new Set(['.', '+', '^', '$', '(', ')', '|', '{', '}', '\\', '/']);
@@ -87,6 +87,25 @@ function alwaysIgnored(relPath) {
     || name.endsWith('.orig');
 }
 
+function readIgnoreFile(path) {
+  try {
+    return readFileSync(path, 'utf8').split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+  } catch {
+    return null;
+  }
+}
+
+/** npm uses .npmignore in a directory, falling back to .gitignore. */
+function ignoreFileIn(dir) {
+  const npmignore = join(dir, '.npmignore');
+  if (existsSync(npmignore)) return npmignore;
+  const gitignore = join(dir, '.gitignore');
+  if (existsSync(gitignore)) return gitignore;
+  return undefined;
+}
+
 export function buildPacklist(dir, manifest) {
   const paths = new Set();
   let complete = true;
@@ -94,19 +113,22 @@ export function buildPacklist(dir, manifest) {
   if ((manifest.bundleDependencies || manifest.bundledDependencies || []).length > 0) complete = false;
   const main = typeof manifest.main === 'string' && manifest.main ? normalizePath(manifest.main) : undefined;
   if (main?.startsWith('../')) complete = false;
-  let ignoreRules = [];
-  const npmignore = join(dir, '.npmignore');
-  if (existsSync(npmignore)) {
-    try {
-      ignoreRules = readFileSync(npmignore, 'utf8').split(/\r?\n/)
-        .map((line) => line.trim())
-        .filter((line) => line && !line.startsWith('#'));
-    } catch {
-      complete = false;
+
+  // npm-packlist disables the ROOT .npmignore/.gitignore as soon as package.json
+  // has a `files` array (the array is the complete selection). Nested ignore
+  // files still apply, which is why the groups are collected per directory below.
+  const hasFiles = Array.isArray(manifest.files);
+  const rootGroups = [];
+  if (!hasFiles) {
+    const rootFile = ignoreFileIn(dir);
+    if (rootFile) {
+      const rules = readIgnoreFile(rootFile);
+      if (rules === null) complete = false;
+      else rootGroups.push({ base: dir, rules });
     }
   }
 
-  function walk(current) {
+  function walk(current, inherited) {
     let entries;
     try {
       entries = readdirSync(current, { withFileTypes: true });
@@ -114,15 +136,24 @@ export function buildPacklist(dir, manifest) {
       complete = false;
       return;
     }
+    let groups = inherited;
+    if (current !== dir) {
+      const nested = ignoreFileIn(current);
+      if (nested) {
+        const rules = readIgnoreFile(nested);
+        if (rules === null) complete = false;
+        else groups = [...inherited, { base: current, rules }];
+      }
+    }
     for (const entry of entries) {
       const absolute = join(current, entry.name);
-      const relPath = normalizePath(absolute.slice(dir.length + 1));
+      const relPath = normalizePath(relative(dir, absolute));
       if (entry.isSymbolicLink()) {
         complete = false;
         continue;
       }
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) walk(absolute);
+        if (!SKIP_DIRS.has(entry.name)) walk(absolute, groups);
         continue;
       }
       if (!entry.isFile() || alwaysIgnored(relPath)) continue;
@@ -130,7 +161,15 @@ export function buildPacklist(dir, manifest) {
         const included = manifest.files === undefined
           ? true
           : Array.isArray(manifest.files) && ruleState(manifest.files, relPath, false);
-        const ignored = ruleState(ignoreRules, relPath, false);
+        let ignored = false;
+        for (const group of groups) {
+          const rel = normalizePath(relative(group.base, absolute));
+          if (rel === '' || rel.startsWith('..')) continue;
+          if (ruleState(group.rules, rel, false)) {
+            ignored = true;
+            break;
+          }
+        }
         if (intrinsic(relPath, main) || (included && !ignored)) paths.add(relPath);
       } catch {
         complete = false;
@@ -138,7 +177,7 @@ export function buildPacklist(dir, manifest) {
     }
   }
 
-  walk(dir);
+  walk(dir, rootGroups);
   return { paths, complete };
 }
 

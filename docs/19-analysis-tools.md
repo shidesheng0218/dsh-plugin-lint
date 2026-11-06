@@ -208,15 +208,15 @@ No rule in this module is error-level, and a clean run does not mean the plugin 
 
 ## 6. 编程 API
 
-v0.3 的导出（`src/index.js`）：
+v0.3 的实验分析导出（`src/experimental/index.js`，安装后为 `@shidesheng0218/dsh-plugin-lint/experimental`）：
 
 ```javascript
+import { loadPackage } from './src/index.js';
 import {
-  loadPackage,
   detectConflicts,
   analyzePerformance,
   analyzeSecurityDeep
-} from './src/index.js';
+} from './src/experimental/index.js';
 
 const pkg = loadPackage('./my-plugin');
 // loadPackage(dir) → { manifest, jsFiles, entries, ... }

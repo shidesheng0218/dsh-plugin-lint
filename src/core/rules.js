@@ -1,7 +1,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendCallSites, blockAfter, braceDepthAt, lineOfIndex, stringAfter } from './mask.js';
-import { exportTarget } from './load.js';
+import { clientExportTarget } from './load.js';
 import { hasPackedFile } from './packlist.js';
 
 const CATALOG = JSON.parse(readFileSync(new URL('../data/event-types.json', import.meta.url), 'utf8'));
@@ -57,13 +57,24 @@ export const RULES = [
       // package name produced a false accusation against @roarpeng/graphflow, whose
       // patch mounts the row "@roarpeng/graphflow/dsh".
       const acceptable = new Set();
-      if (ctx.manifest.name) acceptable.add(ctx.manifest.name);
+      if (ctx.manifest.name) {
+        acceptable.add(ctx.manifest.name);
+        // The loader strips a trailing "/client" from a registration id before
+        // keying the browser module table (dsh-client-modules: stripClientSuffix).
+        acceptable.add(ctx.manifest.name + '/client');
+      }
       const patchRows = [];
       if (ctx.entries.patch !== undefined && ctx.exists(ctx.entries.patch)) {
         const patch = ctx.text(ctx.entries.patch) || '';
         for (const m of patch.matchAll(/^\s*name:\s*['"]?([^'"\s#]+)['"]?/gm)) {
-          acceptable.add(m[1]);
-          patchRows.push(m[1]);
+          // A patch row resolves through its package specifier; only rows that
+          // belong to this package can make the loader ask for this factory id.
+          // An unrelated "@scope/other" row is not a legal key.
+          if (!ctx.manifest.name) continue;
+          if (m[1] === ctx.manifest.name || m[1].startsWith(ctx.manifest.name + '/')) {
+            acceptable.add(m[1]);
+            patchRows.push(m[1]);
+          }
         }
       }
 
@@ -72,6 +83,8 @@ export const RULES = [
       while ((m = re.exec(file.masked)) !== null) {
         const s = stringAfter(file.strings, m.index + m[0].length, 8);
         if (!s || acceptable.has(s.value)) continue;
+        // A computed id (template interpolation) is a static-analysis boundary.
+        if (s.value.includes('${')) continue;
         push({
           file: file.path,
           line: s.line,
@@ -90,7 +103,7 @@ export const RULES = [
     doc: DOC.host,
     check(ctx, options, push) {
       const declared = [
-        ['host entry', ctx.entries.hostDeclared ? ctx.entries.host : undefined, 'manifest.main or exports["."]'],
+        ['host entry', ctx.entries.hostDeclared ? ctx.entries.host : undefined, 'exports["."] or manifest.main'],
         ['client entry', ctx.entries.client, 'exports["./client"]'],
         ['bundle patch', ctx.entries.patch, 'dsh.bundle.patch'],
         ['icon', ctx.entries.icon, 'icon'],
@@ -106,6 +119,20 @@ export const RULES = [
           hint: 'Management pages read these paths without activating the plugin; a missing file is reported as a broken package.',
         });
       }
+      // Node and the DSH loader resolve exports["."] first; a stale main that is
+      // shadowed by a working exports entry does not break loading, so it is a
+      // review hint rather than an error.
+      if (ctx.entries.mainDeclared && ctx.entries.main && ctx.entries.main !== ctx.entries.host
+        && !ctx.exists(ctx.entries.main)) {
+        push({
+          level: 'info',
+          file: 'package.json',
+          line: manifestLine(ctx.manifestText, 'main'),
+          message: 'main points at "' + ctx.entries.main + '", which does not exist; exports["."] takes precedence, so loading is unaffected.',
+          evidence: 'main -> ' + ctx.entries.main + ' (shadowed by exports["."])',
+          hint: 'Remove the stale main or point it at the same file as exports["."]; tools that predate exports may still read it.',
+        });
+      }
     },
   },
 
@@ -119,8 +146,8 @@ export const RULES = [
       if (!hasClientSection) return;
       // entries.client falls back to client.js so the analysis has a file to read;
       // the platform itself resolves the browser artifact only through the
-      // ./client export, so a present client.js without that export is still a bug.
-      const declared = exportTarget(ctx.manifest.exports || {}, './client');
+      // ./client export, and only for a string or a string {default}.
+      const declared = clientExportTarget(ctx.manifest.exports || {}, './client');
       if (declared !== undefined && ctx.exists(String(declared).replace(/^\.\//, ''))) return;
       push({
         file: 'package.json',

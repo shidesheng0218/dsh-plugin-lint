@@ -120,3 +120,21 @@ test('infrastructure errors fail the run summary but negative plugin observation
   assert.equal(result.cells.find((cell) => cell.run.outcome === 'error').run.error.code, 'ARTIFACT_MISSING');
   assert.equal(existsSync(cellFilePath(result.summary.cacheRoot, result.cells.find((cell) => cell.run.outcome === 'error'))), false);
 });
+
+test('a local artifact without registry integrity still writes a run manifest', async (t) => {
+  const services = fakeServices();
+  services.resolveArtifact = async () => ({
+    ...artifact123(),
+    local: true,
+    integrity: undefined,
+    sourceDigest: 'sha256-local',
+  });
+  const result = await runMatrix(options(t, {
+    services,
+    targets: [{ path: '../demo' }],
+    targetMode: 'refresh-latest',
+  }));
+  assert.equal(result.summary.completed, 2);
+  assert.equal(result.summary.errors, 0);
+  assert.equal(existsSync(result.summary.manifestPath), true, 'the manifest is written for a local artifact');
+});

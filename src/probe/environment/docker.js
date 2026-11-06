@@ -1,11 +1,19 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join } from 'node:path';
 import { ToolError } from '../../shared/errors.js';
 import { safeEnv } from '../dsh-adapter.js';
 
 const IMAGE = 'node:22-bookworm-slim';
+// node:22-bookworm-slim ships npm/npx but not pnpm, and `dsh plugin add`
+// spawns pnpm from PATH. The shim is written into the writable profile mount
+// and prepended to PATH; npx downloads the pinned pnpm on first use.
+// pnpm 9 refuses `pnpm add` in a workspace root without -w; DSH invokes it
+// without that flag, and the profile is a pnpm workspace. pnpm 11 accepts it.
+const PNPM_SPEC = 'pnpm@11';
+const PNPM_SHIM = '#!/bin/sh\nexec npx --yes ' + PNPM_SPEC + ' "$@"\n';
+const CONTAINER_PATH = '/profile/.probe-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
 const STUB_SCRIPT = `
 import { createServer } from 'node:http';
 import { appendFileSync } from 'node:fs';
@@ -48,15 +56,26 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
   const containers = new Set();
   const networks = new Set();
 
-  async function execute(stage, dsh, args, env, requestedNetwork, { writableDsh = false, readyRe, timeoutMs: commandTimeout } = {}) {
-    if (dsh.kind === 'desktop') {
-      throw new ToolError('ISOLATION_UNSUPPORTED', 'Desktop DSH is not supported by the Docker backend.');
-    }
-    const name = `dsh-probe-${randomUUID()}`;
-    containers.add(name);
+  // `dsh plugin add` spawns pnpm, which node:22-bookworm-slim does not ship.
+  // The shim lives in the writable profile mount and is first on PATH.
+  const probeBin = join(profileDir, '.probe-bin');
+  mkdirSync(probeBin, { recursive: true });
+  writeFileSync(join(probeBin, 'pnpm'), PNPM_SHIM, { mode: 0o755 });
+
+  function dockerArgs(name, dsh, args, env, requestedNetwork, { writableDsh = false } = {}) {
     const networkName = requestedNetwork === 'registry' || requestedNetwork === 'bridge' ? 'bridge' : (requestedNetwork || 'none');
-    const containerEnv = safeEnv({ HOME: '/profile', DSH_HOME: '/profile', NO_COLOR: '1', ...env });
-    const argsForDocker = [
+    const containerEnv = safeEnv({
+      HOME: '/profile',
+      DSH_HOME: '/profile',
+      NO_COLOR: '1',
+      PATH: CONTAINER_PATH,
+      // The native-addon loader copies .node files into os.tmpdir() and dlopens
+      // them there; Docker mounts /tmp noexec, so the copy cannot be mapped.
+      // Loading straight from the read-only package tree works.
+      NARB_DISABLE_NATIVE_CACHE: '1',
+      ...env,
+    });
+    return [
       'run', '--rm', '--name', name,
       '--read-only',
       '--cap-drop=ALL',
@@ -78,10 +97,69 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
       dsh.containerCli || dsh.cli,
       ...args,
     ];
+  }
+
+  /**
+   * Run a container until its output matches `readyRe`, then stop it.
+   *
+   * `execFile` cannot see the readiness line until the (long-lived) web server
+   * exits, so the old code capped every web boot at 15 s: fast boots wasted the
+   * whole cap and slower ones were killed and reported boot-failed. Polling
+   * `docker logs` lets a ready container stop immediately and a slow one use
+   * the full environment timeout. It also keeps the injected `runner` as the
+   * only process boundary, so the path is testable without a daemon.
+   */
+  async function runUntilReady(name, argsForDocker, readyRe, { timeoutMs: limit, graceMs = 2500 } = {}) {
+    const started = Date.now();
+    let settled;
+    const runPromise = runner('docker', argsForDocker, {
+      env: safeEnv(),
+      timeout: limit,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+    }).then((result) => { settled = { result }; })
+      .catch((error) => { settled = { error }; });
+    let out = '';
+    let ready = false;
+    while (!settled && Date.now() - started < limit) {
+      await delay(150);
+      if (settled) break;
+      try {
+        const logs = await runner('docker', ['logs', name], { env: safeEnv(), timeout: 5000, encoding: 'utf8' });
+        out = String(logs.stdout || '') + String(logs.stderr || '');
+        if (readyRe.test(out)) { ready = true; break; }
+      } catch { /* the container may not have started yet */ }
+    }
+    if (ready) await delay(graceMs);
+    // Stop a running container after readiness or timeout; a natural exit makes
+    // this a no-op that fails harmlessly.
     try {
+      await runner('docker', ['kill', name], { env: safeEnv(), timeout: 5000, encoding: 'utf8' });
+    } catch { /* already exited */ }
+    await runPromise;
+    const final = settled?.result || settled?.error;
+    if (final) out = String(final.stdout || '') + String(final.stderr || '') || out;
+    return out;
+  }
+
+  async function execute(stage, dsh, args, env, requestedNetwork, { writableDsh = false, readyRe, timeoutMs: commandTimeout, graceMs } = {}) {
+    if (dsh.kind === 'desktop') {
+      throw new ToolError('ISOLATION_UNSUPPORTED', 'Desktop DSH is not supported by the Docker backend.');
+    }
+    const name = `dsh-probe-${randomUUID()}`;
+    containers.add(name);
+    const argsForDocker = dockerArgs(name, dsh, args, env, requestedNetwork, { writableDsh });
+    try {
+      if (readyRe) {
+        const out = await runUntilReady(name, argsForDocker, readyRe, {
+          timeoutMs: commandTimeout ?? timeoutMs,
+          graceMs,
+        });
+        return { stage, out, ready: readyRe.test(out) };
+      }
       const result = await runner('docker', argsForDocker, {
         env: safeEnv(),
-        timeout: commandTimeout ?? (readyRe ? Math.min(timeoutMs, 15000) : timeoutMs),
+        timeout: commandTimeout ?? timeoutMs,
         encoding: 'utf8',
         maxBuffer: 32 * 1024 * 1024,
       });
@@ -106,8 +184,8 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
       if (!installTarget) throw new ToolError('ARTIFACT_MISSING', 'No pinned artifact was provided for installation.');
       return execute('install', dsh, ['plugin', '--profile', profile, 'add', installTarget], env, 'registry');
     },
-    async boot({ dsh, args, env = {}, network: bootNetwork, writableDsh = false, readyRe, timeoutMs: bootTimeout }) {
-      return execute('boot', dsh, args, env, bootNetwork || network, { writableDsh, readyRe, timeoutMs: bootTimeout });
+    async boot({ dsh, args, env = {}, network: bootNetwork, writableDsh = false, readyRe, graceMs, timeoutMs: bootTimeout }) {
+      return execute('boot', dsh, args, env, bootNetwork || network, { writableDsh, readyRe, graceMs, timeoutMs: bootTimeout });
     },
     async startStub() {
       const networkName = `dsh-probe-net-${randomUUID()}`;

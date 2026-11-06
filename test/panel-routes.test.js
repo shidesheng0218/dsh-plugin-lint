@@ -157,3 +157,37 @@ test('executor failures are sanitized and the next action can proceed', async ()
   const next = await action(actionRequest({ action: 'isolate', plugin: 'demo', confirmed: true }));
   assert.equal(next.status, 200);
 });
+
+test('a same-origin web action is accepted behind the dsh.internal bridge', async () => {
+  const deps = actionDeps();
+  const action = createActionHandler(deps);
+  const request = new Request('http://dsh.internal/api/dsh-plugin-lint/panel/action', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-dsh-plugin-lint-action': '1',
+      origin: 'http://127.0.0.1:5000',
+      host: '127.0.0.1:5000',
+    },
+    body: JSON.stringify({ action: 'isolate', plugin: 'demo', confirmed: true }),
+  });
+  const response = await action(request);
+  assert.equal(response.status, 200);
+});
+
+test('a cross-origin action is refused even when the bridge URL is dsh.internal', async () => {
+  const deps = actionDeps();
+  const action = createActionHandler(deps);
+  const request = new Request('http://dsh.internal/api/dsh-plugin-lint/panel/action', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-dsh-plugin-lint-action': '1',
+      origin: 'http://evil.example',
+      host: '127.0.0.1:5000',
+    },
+    body: JSON.stringify({ action: 'isolate', plugin: 'demo', confirmed: true }),
+  });
+  const response = await action(request);
+  assert.equal(response.status, 403);
+});

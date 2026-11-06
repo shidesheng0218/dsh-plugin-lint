@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { downloadArtifact, resolveArtifact } from '../src/probe/artifact-resolver.js';
 import { resolveDsh, startStub } from '../src/probe/dsh-adapter.js';
 import { createProbeEnvironment } from '../src/probe/environment.js';
@@ -12,14 +13,17 @@ const USAGE = [
   '  dsh-plugin-probe <npm-package|path> [...] [options]',
   '',
   'Options',
-  '  --dsh <version>       use @deepseek-ai/dsh at an exact npm version (default: desktop)',
+  '  --dsh <version>       use @deepseek-ai/dsh at an exact npm version (required for the Docker backend)',
   '  --mode <mode>         headless, web, or both (default: headless)',
-  '  --cache <dir>         controlled cache and temporary environment root',
+  '  --cache <dir>         cache root for DSH installs and temporary environments (default: system temp)',
   '  --tools               capture tool inventory through the isolated stub',
   '  --audit               include the static capability inventory',
   '  --keep                accepted for CLI compatibility; isolation is always destroyed',
-  '  --unsafe-host         explicitly run without isolation; results remain self-reported',
+  '  --unsafe-host         run the desktop DSH without isolation; results remain self-reported',
   '  -h, --help            show this message',
+  '',
+  'There is no silent host fallback: the Docker backend requires --dsh <version>,',
+  'and the desktop DSH can only be probed with --unsafe-host.',
   '',
   'Exit codes: 0 all observations completed · 2 an infrastructure error occurred',
 ].join('\n');
@@ -51,10 +55,21 @@ if (packages.length === 0) {
   process.exit(2);
 }
 
-const cacheRoot = argOf('--cache', fileURLToPath(new URL('../.matrix-cache', import.meta.url)));
-const dsh = dshVersion
-  ? { id: 'npm:' + dshVersion, kind: 'npm', version: dshVersion, extraArgs: [] }
-  : await resolveDsh(undefined, cacheRoot);
+const cacheRoot = argOf('--cache', process.env.DSH_PROBE_CACHE || join(tmpdir(), 'dsh-plugin-lint-cache'));
+let dsh;
+try {
+  dsh = dshVersion
+    ? { id: 'npm:' + dshVersion, kind: 'npm', version: dshVersion, extraArgs: [] }
+    : await resolveDsh(undefined, cacheRoot);
+} catch (error) {
+  console.error((error.code || 'PROBE_FAILED') + ': ' + (error.message || 'The DSH runtime could not be resolved.'));
+  process.exit(2);
+}
+if (dsh.kind === 'desktop' && backend !== 'host-unsafe') {
+  console.error('dsh-plugin-probe: the desktop DSH can only be probed with --unsafe-host '
+    + '(no container isolation), or pass --dsh <npm-version> to use the Docker backend.');
+  process.exit(2);
+}
 console.log('probing with ' + dsh.id + ' [' + backend + ']' + (withTools ? ' + isolated stub' : ''));
 
 const results = [];
@@ -64,7 +79,11 @@ for (const name of packages) {
     let artifact = await resolveArtifact(name);
     if (!artifact.local) artifact = await downloadArtifact(artifact);
     for (const mode of modes) {
-      const environment = await createProbeEnvironment({ backend, workDir: cacheRoot });
+      const environment = await createProbeEnvironment({
+        backend,
+        workDir: cacheRoot,
+        dshDir: dsh.kind === 'npm' && dsh.version !== 'desktop' ? join(cacheRoot, 'dsh', dsh.version) : undefined,
+      });
       const stub = withTools && mode !== 'web' && backend === 'host-unsafe' ? await startStub() : undefined;
       try {
         const observation = await probePackage({ artifact, dsh, environment, stub, tools: withTools, keep, composition: mode, audit: withAudit });

@@ -10,7 +10,8 @@
  */
 
 import { fileURLToPath } from 'node:url';
-import { loadPackage, detectConflicts, analyzePerformance, analyzeSecurityDeep } from '../src/index.js';
+import { loadPackage } from '../src/index.js';
+import { detectConflicts, analyzePerformance, analyzeSecurityDeep } from '../src/experimental/index.js';
 import { maskSource } from '../src/mask.js';
 
 const panelDir = fileURLToPath(new URL('../panel/', import.meta.url));

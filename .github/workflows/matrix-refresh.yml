@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: true
+      publish_named_data:
+        description: 'Explicitly publish the named per-package cells to matrix/public (data-policy decision).'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -38,7 +43,7 @@ jobs:
         env:
           PLUGINS: ${{ inputs.plugins }}
           OUT: ${{ inputs.out || 'matrix/cells' }}
-          TOOLS: ${{ inputs.tools == false && '--no-tools' || '--tools' }}
+          TOOLS: ${{ (github.event_name == 'workflow_dispatch' && inputs.tools == false) && '--no-tools' || '--tools' }}
         run: |
           set -euo pipefail
           if [ -n "$PLUGINS" ]; then
@@ -48,7 +53,11 @@ jobs:
           fi
           node scripts/matrix/conflicts.mjs --cells "$OUT" --cache .matrix-cache --out matrix/index/conflicts.json
 
-      - name: Upload the candidate artifact
+      - name: Upload the candidate artifact (explicit publication only)
+        # A scheduled run must not leave named per-package cells in a public
+        # Actions artifact: that is a publication channel the data policy does
+        # not allow. Only a manual run that explicitly opts in uploads them.
+        if: github.event_name == 'workflow_dispatch' && inputs.publish_named_data == true
         uses: actions/upload-artifact@v4
         with:
           name: matrix-candidate
@@ -57,9 +66,14 @@ jobs:
             matrix/index/conflicts.json
           if-no-files-found: error
 
+  # Publishing named per-package cells is a data-policy decision, not a default:
+  # README.md says any output that names a package stays out of the repository.
+  # The job therefore runs only on an explicit manual dispatch with
+  # publish_named_data=true. Without that input the probe artifact is uploaded
+  # for review and nothing is committed.
   publish:
     needs: probe
-    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.publish_named_data == true
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -98,7 +112,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           branch="matrix/refresh-${{ github.run_id }}"
           git checkout -b "$branch"
-          git add matrix/public
+          git add -f matrix/public
           git commit -m "chore(matrix): refresh public evidence"
           git push origin "HEAD:$branch"
           gh pr create --title "chore(matrix): refresh public evidence" --body "Automated matrix candidate, revalidated offline. Review composition and trust changes; do not merge automatically." --base "${{ github.event.repository.default_branch }}" --head "$branch"

@@ -42,7 +42,12 @@ export function validateCell(value) {
     if (typeof value.plugin.local !== 'boolean') errors.push('plugin.local must be boolean');
     if (value.plugin.local === false && typeof value.plugin.integrity !== 'string') errors.push('registry integrity is required');
     if (value.plugin.local === true && typeof value.plugin.sourceDigest !== 'string') errors.push('local sourceDigest is required');
-    if (value.run?.outcome === 'completed') string(value.plugin.loadedVersion, 'plugin.loadedVersion', errors);
+    // A plugin the host rejected was never loaded, so there is no loaded version
+    // to record. Requiring one here made createCell throw and aborted the whole
+    // matrix run on the first rejection.
+    if (value.run?.outcome === 'completed' && value.result?.status !== 'rejected-by-host') {
+      string(value.plugin.loadedVersion, 'plugin.loadedVersion', errors);
+    }
     if (value.plugin.loadedVersion !== undefined && value.plugin.loadedVersion !== value.plugin.resolvedVersion) {
       errors.push('plugin.loadedVersion must equal resolvedVersion');
     }

@@ -8,9 +8,9 @@ The host is split into `profile/`, `matrix/`, `payload/`, `update/`, `actions/`,
 
 `recorded-active` means that an isolated probe previously recorded `active`; it does **not** mean that the currently running profile is healthy or that its browser client was exercised. The UI uses recorded / attention / unverified rather than a live-health score. Matrix cells retain their composition and trust metadata, and static conflict candidates remain separate from runtime results.
 
-Action requests require `content-type: application/json`, `x-dsh-plugin-lint-action: 1`, `confirmed: true`, a valid package name, and an installed exact version. The panel itself and first-party bundles are protected server-side. Execution uses `execFile`, a per-profile lock, and a sanitized audit (no env, argv, stdout, stderr, or tokens).
+Action requests require `content-type: application/json`, `x-dsh-plugin-lint-action: 1`, `confirmed: true`, a valid package name, and an installed exact version. The panel itself and first-party bundles are protected server-side. Execution uses `execFile`, a per-profile lock, and a sanitized audit (no env, argv, stdout, stderr, or tokens). **These server-side checks are in the unreleased 0.1.6.** The published 0.1.5 predates them: its action route has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`. Do not install 0.1.5 into a profile that runs untrusted plugins; see Install.
 
-**DSH authentication evidence:** the supported `@deepseek-ai/dsh-client-connection` packages at `0.2.0-rc.2` and `0.2.1-alpha.2` implement a signed, authority-bound browser cookie (`lib/index.js`, `BrowserAuth`) and a Host/Origin request fence (`isTrustedApiRequest`). A missing `Origin` is explicitly accepted by that implementation, so it is not treated as a vulnerability here. When `Origin` is present, this panel requires the same host, and also enforces JSON, the custom action header, confirmation, and installation state.
+**DSH authentication evidence:** the supported `@deepseek-ai/dsh-client-connection` packages at `0.2.0-rc.2` and `0.2.1-alpha.2` implement a signed, authority-bound browser cookie (`lib/index.js`, `BrowserAuth`) and a Host/Origin request fence (`isTrustedApiRequest`). A missing `Origin` is explicitly accepted by that implementation, so it is not treated as a vulnerability here. When `Origin` is present, this panel requires it to match the forwarded `Host` header (the bridge rewrites `request.url` to `http://dsh.internal`, so the URL host is not the browser's authority), and also enforces JSON, the custom action header, confirmation, and installation state.
 
 ## What it shows
 
@@ -22,11 +22,11 @@ Action requests require `content-type: application/json`, `x-dsh-plugin-lint-act
 
 Rows need a **full** matrix snapshot. The panel obtains one in three ways, in this order:
 
-1. **Automatic background sync.** On load, the panel refreshes a per-profile cache (`<profile>/.dsh-plugin-lint/matrix`) from the public artifact committed at `matrix/public/` in the source repository, fetched over HTTPS from the raw file tree and verified byte-by-byte against its signed manifest. A refresh older than 7 days is retried; a failed or unreachable source never blocks the panel — it keeps rendering whatever it already has. No data leaves the profile; the only request is a read from the public repository.
+1. **Automatic background sync (currently inactive).** On load, the panel tries to refresh a per-profile cache (`<profile>/.dsh-plugin-lint/matrix`) from `matrix/public/` in the source repository, fetched over HTTPS and verified byte-for-byte against its hash manifest. `matrix/public/` is **not published**: `matrix/public/` is gitignored under the data policy and the workflow that would create it is manual and gated on an explicit `publish_named_data` decision. Until that decision is made and the artifact exists, the refresh resolves to a 404 and the panel keeps the bundled aggregate. Hash verification detects corruption, not publisher identity (the manifest is not signed).
 2. **An explicit override.** Set `DSH_PLUGIN_LINT_INDEX` to a full snapshot path, or `DSH_PLUGIN_LINT_CACHE` to point the cache elsewhere.
 3. **The bundled aggregate.** The npm package ships only `data/aggregate.json` (counts per version, no package names). With no cache and no override, an npm-installed panel shows the aggregate picture and marks installed plugins as uncovered.
 
-Per-plugin rows therefore appear on npm installs too, once the first background sync lands; they no longer require a local checkout.
+Per-plugin rows require a full snapshot: a local checkout with `data/matrix-index.json`, an explicit `DSH_PLUGIN_LINT_INDEX` override, or a published `matrix/public/` artifact once the data-policy decision allows one. A plain npm install shows aggregate counts only.
 
 ## Data and its limits
 
@@ -40,7 +40,7 @@ Current local snapshot: 50 plugins × 2 DSH versions × 2 compositions = 200 cel
 
 - In 23 of the 200 legacy cells the recorded `plugin.version` differs from the version the cell says was actually installed, and the reproduce command does not pin that version. These cells remain visible for historical context but are not recommended for upgrade decisions.
 - `scripts/matrix/bundle-panel-data.mjs` prefers `matrix/public/` and calls the public artifact's schema, hash, index, aggregate, and count verification before writing either output. A legacy `matrix/index/latest.json` is accepted only as a local compatibility fallback.
-- **`matrix/cells/`, `matrix/index/`, and `matrix/public/` are generated artifacts**. Rebuilding needs the pinned inputs and a working isolated probe backend; no successful run is inferred from unit tests.
+- **`matrix/cells/`, `matrix/index/`, and `matrix/public/` are generated artifacts** and are gitignored. Publishing `matrix/public/` is an explicit data-policy decision (`matrix refresh` with `publish_named_data=true`); it is not the default. Rebuilding needs the pinned inputs and a working isolated probe backend; no successful run is inferred from unit tests.
 - The local snapshot covers only `0.2.0-rc.2` and `0.2.1-alpha.2`.
 
 ## Install
@@ -50,7 +50,14 @@ Current local snapshot: 50 plugins × 2 DSH versions × 2 compositions = 200 cel
 dsh plugin --profile <profile> add @shidesheng0218/dsh-plugin-lint-panel
 ```
 
-Per-plugin matrix rows appear after the first background sync; no checkout or manual bundling is needed. From a checkout you can still pre-seed the bundled snapshot with `node scripts/matrix/bundle-panel-data.mjs`, then `dsh plugin --profile <profile> add <absolute path to this directory>`.
+> **0.1.5 security note.** The published 0.1.5 action route accepts any JSON body
+> naming a plugin and runs `dsh plugin --profile desktop remove/add` without a
+> confirmation, protected-package, or installed-only check. Any same-origin
+> plugin client can call it, and on a non-desktop profile it mutates the desktop
+> profile. Install 0.1.6 (or a later release) when it is available, or keep the
+> panel out of profiles that run untrusted plugins until then.
+
+Per-plugin matrix rows require a snapshot (see above); no checkout is needed only after a `matrix/public/` artifact is published. From a checkout you can pre-seed the snapshot with `node scripts/matrix/bundle-panel-data.mjs`, then `dsh plugin --profile <profile> add <absolute path to this directory>`.
 
 The profile then shows a **Plugin Health Center** section in Settings.
 
@@ -80,5 +87,6 @@ node scripts/screenshot-panel.mjs        # writes docs/assets/panel.png
 
 - **Client half is not covered by the probe**: a verdict describes the host half of a plugin; the browser half is not exercised. The separate real-browser screenshot verifies the panel's own rendering, not every plugin's client.
 - **Per-plugin data requires a local snapshot** (see above); npm installs show aggregate counts only.
+- **The automatic sync has no source yet**: `matrix/public/` is gitignored and not published, so the default URL resolves to 404 and the panel keeps the bundled aggregate. This is a data-policy decision, not a transient outage.
 - Aggregate v2 includes `sourceRunId` when a verified public export supplies it. A legacy local fallback may lack run provenance and is not publishable v2 evidence.
 - The panel's update check calls the npm registry (4 s timeout, 6 h cache, failure silent); it is a convenience, not a dependency.
