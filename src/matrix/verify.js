@@ -88,7 +88,11 @@ export function createVerificationProbe({ cacheRoot, backend = 'auto' }) {
       integrity: cell.plugin.integrity,
       ...(cell.plugin.local ? { path: cell.plugin.path, local: true } : {}),
     });
-    const environment = await createProbeEnvironment({ backend, workDir: cacheRoot });
+    const environment = await createProbeEnvironment({
+      backend,
+      workDir: cacheRoot,
+      dshDir: cell.dsh.source === 'desktop' ? undefined : join(cacheRoot, 'dsh', cell.dsh.version),
+    });
     const dsh = {
       kind: cell.dsh.source === 'desktop' ? 'desktop' : 'npm',
       version: cell.dsh.version,

@@ -106,7 +106,7 @@ Rule IDs are stable identifiers, not severity labels: `W3` reports at info level
 
 | Rule | What it catches |
 | --- | --- |
-| E1 | `session.append("type", …)` with a type outside the Harness event catalog (281 types harvested from the official packages; 280 observed) |
+| E1 | `session.append("type", …)` with a type outside the Harness event catalog (380 types harvested from the official packages; 379 observed) |
 | E2 | client bundle factory id ≠ anything the loader can ask for (the registration silently never resolves) |
 | E3 | `main` / `exports["./client"]` / `dsh.bundle.patch` / `icon` points at a missing file |
 | E4 | `dsh.client` declared with no resolvable `./client` export |
@@ -141,12 +141,12 @@ Measured on 2026-10-13: 62 of the Top 100 published plugins load at least one of
 
 | Run | Result |
 | --- | --- |
-| 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 240 info |
+| 80 official `@deepseek-ai/*` packages (zero-false-positive baseline) | **0 error · 0 warn** · 241 info |
 | Top 100 published community plugins | **1 error · 86 warn** · 240 info |
 | — of which couple to a Harness Client package | **62%** |
 | — of which declare no DSH compatibility range | **87%** |
 
-The official-package run predates the Top 100 run (both 2026-10-13); the two info totals of 240 are coincidental (240 = 80 I1 + 159 I2 + 1 W3 on the official set; 240 = 87 I1 + 136 I2 + 17 W3 on the Top 100). The error rules fired on 1 of the 100 published plugins (E1: an append type outside the catalog). The daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07](docs/07-m1-results.md) and [docs/09](docs/09-ecosystem-measurements.md).
+The official-package run predates the Top 100 run (both 2026-10-13); the two info totals are no longer equal (241 = 80 I1 + 160 I2 + 1 W3 on the official set; 240 = 87 I1 + 136 I2 + 17 W3 on the Top 100). The error rules fired on 1 of the 100 published plugins (E1: an append type outside the catalog). The daily value is the coupling inventory (W1) and declaration completeness (I1/I2), which nearly every plugin is missing something on. See [docs/07](docs/07-m1-results.md) and [docs/09](docs/09-ecosystem-measurements.md).
 
 ## The probe
 
@@ -170,13 +170,13 @@ Two details make it work, and both were learned the hard way:
 - **The exit code is never the signal.** A mount failure is a warning and the process still exits 0.
 
 ```bash
-node scripts/probe-boot.mjs dsh-mnemon --tools
+node scripts/probe-boot.mjs dsh-mnemon --tools --dsh 0.2.0-rc.2
 #   active  (3732 ms)
 #   tools 24 -> 41  +17: mnemon_remember, mnemon_recall, mnemon_forget, ...
 #   system prompt 2640 -> 7153 chars
 ```
 
-That is example output from the 2026-10-13 run. The probe installs the target from npm or from a path, so it executes third-party code in the current user's environment without a sandbox. Run it on plugins you are willing to execute.
+That is example output from the 2026-10-13 run. The probe runs the target in a hardened Docker container (read-only root, no capabilities, no-new-privileges, non-root, network only during install) and refuses to run when Docker is unavailable. `--unsafe-host` is the explicit escape hatch: it runs the desktop DSH and the plugin in the current user's environment without isolation, and its results stay self-reported. The Docker backend needs an explicit `--dsh <version>`; the desktop DSH can only be probed with `--unsafe-host`. Run the probe only on plugins you are willing to execute.
 
 See [docs/11](docs/11-m4-capability-probe.md).
 
@@ -254,15 +254,15 @@ The matrix is not shipped in the npm package and `matrix/cells/` is gitignored, 
 
 ### Programmatic API
 
-The analysis functions are exported from the package entry point. In the unpublished checkout:
+The analysis functions live behind the `./experimental` subpath; the package entry point keeps only the ten stable core exports. In the unpublished checkout:
 
 ```javascript
+import { loadPackage } from './src/index.js';
 import {
-  loadPackage,
   detectConflicts,
   analyzePerformance,
   analyzeSecurityDeep
-} from './src/index.js';
+} from './src/experimental/index.js';
 
 const packages = ['./plugin-a', './plugin-b'].map((dir) => {
   const pkg = loadPackage(dir);
@@ -351,7 +351,7 @@ It is not "the last one wins" — the later plugin is discarded whole. And becau
 
 [`panel/`](panel/) is a real DSH plugin: a settings section — titled **Plugin Health Center** — listing what this profile has installed, how each plugin fares across DSH versions, and, below the table, aggregate ecosystem counts per version (never a package name). The screenshot at the top of this file was captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
 
-The panel reads two data files: the full matrix snapshot when one exists locally (`data/matrix-index.json`, overridable with `DSH_PLUGIN_LINT_INDEX`), and the aggregate that ships in the npm package (`data/aggregate.json`, counts only). **An npm-installed panel therefore shows the ecosystem counts and marks installed plugins as uncovered; per-plugin rows need a local matrix snapshot.** The npm release is panel 0.1.5; the 0.1.6 in this checkout is unpublished.
+The panel reads two data files: the full matrix snapshot when one exists locally (`data/matrix-index.json`, overridable with `DSH_PLUGIN_LINT_INDEX`), and the aggregate that ships in the npm package (`data/aggregate.json`, counts only). **An npm-installed panel therefore shows the ecosystem counts and marks installed plugins as uncovered; per-plugin rows need a local matrix snapshot.** The npm release is panel 0.1.5; the 0.1.6 in this checkout is unpublished. The published 0.1.5 predates the server-side action guards in this checkout (it has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`), so do not install it into a profile that runs untrusted plugins until a fixed release ships.
 
 With no per-plugin data, the page still shows the matrix overview: 50 plugins across 2 DSH versions, with 80 of 100 cells active on 0.2.0-rc.2 and 72 of 100 on 0.2.1-alpha.2.
 
@@ -406,6 +406,8 @@ Two reasons, and they point the same way:
 
 The aggregate counts (`panel/data/aggregate.json`) are tracked, because they describe the ecosystem rather than any one maintainer. See [docs/09](docs/09-ecosystem-measurements.md).
 
+`matrix/public/` — the runtime source the panel tries to sync — is also gitignored. Publishing it is a deliberate, manual decision (`matrix refresh` with `publish_named_data=true`), not a side effect of the weekly schedule; until that decision is made, the panel falls back to the bundled aggregate.
+
 ## Reports
 
 ```bash
@@ -419,11 +421,11 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # node --test test/*.test.js: 120 cases across 9 files
+npm test                 # node --test test/*.test.js: 270 cases across 31 files
 npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
 ```
 
-At this revision the suite has **120 node:test cases** (analyze-cli 12, composition 8, lint 28, panel 14, performance 8, probe 9, security 12, upgrade-plan 23, upgrade-preview 6). `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+At this revision the suite has **270 node:test cases across 31 files**. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
 
 `npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
@@ -473,7 +475,7 @@ Apache-2.0. See [NOTICE](NOTICE) for the data derived from DeepSeek Harness (MIT
 
 | 跑批 | 结果 |
 | --- | --- |
-| 80 个官方 `@deepseek-ai/*` 包（零误报基线） | **0 error · 0 warn** · 240 info |
+| 80 个官方 `@deepseek-ai/*` 包（零误报基线） | **0 error · 0 warn** · 241 info |
 | Top 100 已发布社区插件 | **1 error · 86 warn** · 240 info |
 | — 其中耦合官方 Client 包 | **62%** |
 | — 其中没有声明兼容范围 | **87%** |
@@ -484,9 +486,9 @@ Apache-2.0. See [NOTICE](NOTICE) for the data derived from DeepSeek Harness (MIT
 
 按"能不能可靠判定"分级，而不是按听起来多严重：error 级必须机器可判、且在官方包里从不出现；warn 级是官方文档点名的风险写法，必须附证据；info 级是提示与元数据完整性。判不准的规则不配对插件下结论——判不准就降级，或者删掉。规则编号是稳定标识，不是严重度缩写：`W3` 实际报 info，`I3` 实际报 warn。初版 12 条规则里有 3 条按字面实现会误报官方包，已按这个原则处理，详见 [详细设计](docs/06-detailed-design.md)。
 
-验收基线是 80 个官方 `@deepseek-ai/*` 包 **0 error · 0 warn**（240 条 info）：官方包是文档规范的参考实现，error 级规则命中官方包，先假定是规则的 bug。
+验收基线是 80 个官方 `@deepseek-ai/*` 包 **0 error · 0 warn**（241 条 info）：官方包是文档规范的参考实现，error 级规则命中官方包，先假定是规则的 bug。
 
-E1 的事件白名单是 281 个官方 session 事件类型（采集自官方包，其中 280 个被实际观测到）。
+E1 的事件白名单是 380 个官方 session 事件类型（采集自官方包，其中 379 个被实际观测到）。
 
 W1 规则对应的官方文档原文：
 
@@ -504,7 +506,7 @@ Top 100 里 62 个插件加载了至少一个官方 Client 包；ui-primitives �
 - **退出码永远不是信号。** 挂载失败只是 warning，进程退出码仍为 0——所以探针解析 stderr。同理，安装结果也不能信退出码：历史跑批里 26 个"安装失败"有 23 个其实装成功了，判据改为校验产物（profile 的 package.json 是否变化）。
 - **成功的哨兵是一个缺失的凭据。** 一次性环境里没有 API key，所以挂载成功的插件会以 `MISSING_CREDENTIAL` 结束。这就是信号。
 
-探针会安装并执行第三方插件代码（无沙箱），只对愿意执行的插件运行。
+探针默认在加固的 Docker 容器里运行目标插件（只读根文件系统、无 capability、非 root、仅在安装阶段联网），Docker 不可用时拒绝执行，而不是静默退回本机。`--unsafe-host` 是显式逃生口：它用桌面版 DSH 在当前用户环境里无隔离运行，结果只能算 self-reported。Docker 后端必须显式给 `--dsh <版本>`；桌面 DSH 只能用 `--unsafe-host`。只对愿意执行的插件运行探针。
 
 ### 兼容性矩阵
 
@@ -553,7 +555,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 [`panel/`](panel/) 是一个真实的 DSH 插件：设置页里一个 **Plugin Health Center** 区块，列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，下方是各版本 active / awaiting-service / rejected-by-host / install-failed 的聚合计数（只有数字，没有包名）。本文顶部的截图由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
 
-面板读两个数据文件：本地存在全量矩阵快照时读 `data/matrix-index.json`（可用 `DSH_PLUGIN_LINT_INDEX` 覆盖），否则读 npm 包里随附的 `data/aggregate.json`（只有计数）。**因此从 npm 安装的面板只显示聚合数据，逐插件矩阵列需要本地快照。** npm 上的面板版本是 0.1.5；本工作区的 0.1.6 未发布。
+面板读两个数据文件：本地存在全量矩阵快照时读 `data/matrix-index.json`（可用 `DSH_PLUGIN_LINT_INDEX` 覆盖），否则读 npm 包里随附的 `data/aggregate.json`（只有计数）。**因此从 npm 安装的面板只显示聚合数据，逐插件矩阵列需要本地快照。** npm 上的面板版本是 0.1.5；本工作区的 0.1.6 未发布。已发布的 0.1.5 早于本仓库的服务端动作校验（没有 content-type、确认、受保护包或已安装校验，且硬编码 `--profile desktop`），在运行不受信插件的 profile 里先不要安装，直到修复版发布。
 
 没有逐插件数据时，页面仍展示矩阵全景：50 个插件 × 2 个版本，0.2.0-rc.2 上 100 格里 80 格 active，0.2.1-alpha.2 上 72 格 active。
 
@@ -601,6 +603,8 @@ API 见 [docs/19](docs/19-analysis-tools.md)，未发布版本的 release notes 
 
 聚合计数（`panel/data/aggregate.json`）进版本库，因为它描述的是生态而不是某个维护者，见 [生态测量](docs/09-ecosystem-measurements.md)。
 
+面板运行时会尝试同步的 `matrix/public/` 同样被 gitignore。发布它是显式的人工决定（`matrix refresh` 勾选 `publish_named_data=true`），不是每周调度的默认副作用；在这个决定做出之前，面板回退到随包附带的聚合计数。
+
 ### 用法
 
 npm 发布版本是 **0.1.0**（2026-10-14 发布）。本工作区是 **0.3.0，未发布**；下文的分析命令只在源码 checkout 里存在。
@@ -609,7 +613,7 @@ npm 发布版本是 **0.1.0**（2026-10-14 发布）。本工作区是 **0.3.0�
 npx @shidesheng0218/dsh-plugin-lint .            # 体检当前目录的插件（npm 0.1.0）
 npx @shidesheng0218/dsh-plugin-lint . --json     # 机器可读报告
 npx @shidesheng0218/dsh-plugin-lint . --exit-code  # 有 error 级发现时退出码为 1
-node scripts/probe-boot.mjs <插件名> --tools      # 实测挂载，读工具清单与提示词成本
+node scripts/probe-boot.mjs <插件名> --tools --dsh 0.2.0-rc.2  # Docker 探针（或加 --unsafe-host 用桌面版）
 node scripts/matrix/run.mjs --targets matrix/targets-top50.json   # 重跑兼容矩阵
 node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkout）
 ```
@@ -621,10 +625,10 @@ node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkou
 ### 测试
 
 ```bash
-npm test   # node --test test/*.test.js：120 个用例，9 个文件
+npm test   # node --test test/*.test.js：270 个用例，31 个文件
 ```
 
-当前 revision 的实测：120 个 `node:test` 用例（analyze-cli 12、composition 8、lint 28、panel 14、performance 8、probe 9、security 12、upgrade-plan 23、upgrade-preview 6），普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
+当前 revision 的实测：270 个 `node:test` 用例、31 个测试文件，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 

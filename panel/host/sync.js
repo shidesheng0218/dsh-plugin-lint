@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { syncMatrix } from '../../src/matrix/sync.js';
+import { syncMatrix } from './matrix-sync.js';
 import { profileDir } from './profile.js';
 
 /**

@@ -44,26 +44,26 @@ jobs:
 | `disputed` | 抽检结果与自报不一致 | ⚠️ | **两个结论都留在文件里**，差异公开 |
 | `stale` | 超过 30 天，或 DSH 已发新版 | ⏳ | 结论可能过期 |
 
-抽检策略：每周对 `self-reported` 随机抽 20%（种子=运行序号），跑 [verify.mjs](../scripts/matrix/verify.mjs)：
+抽检策略（手动触发）：对 `self-reported` 随机抽 20%（种子=运行序号），跑 [verify.mjs](../scripts/matrix/verify.mjs)：
 
 - 一致 → 升级为 `verified`，并顺手刷新工具清单；
 - 不一致 → 标记 `disputed`，把 `{reported, observed}` 一起写进 cell。
 
 **不一致不会被掩盖**，这是这套机制能不能被信任的关键。
 
-**当前状态：这是一条没有跑通的设计。** cell 与复验报告 `matrix/index/verification.json` 都被 gitignore，`verify-sample.yml` 因此每次都提前退出（没有可提交的 tracked 变更），自报 cell 也没有进入版本库的通道。需要时只能在本地产物上手动复验。
+**当前状态：这是一条没有跑通的设计。** `matrix/cells/` 与复验报告 `matrix/index/verification.json` 都被 gitignore；2026-11-06 之前 `verify-sample.yml` 是每周三的调度任务，但它默认读一个干净 checkout 里不存在的 `matrix/cells`，每次都在 `CELL_READ_FAILED` 退出（例如 run 41825103086），一个 cell 也没验过。现在该 workflow 改为**仅手动触发**，必须通过 `cells` 输入提供一个已存在的语料目录；没有语料时它明确报错，而不是空转成绿色。
 
 ## 4. 本仓库的 workflow（当前 5 个）
 
 | 文件 | 触发 | 作用 |
 | --- | --- | --- |
 | [ci.yml](../.github/workflows/ci.yml) | push / PR | 单测 + 从 npm 拉官方包做零误报基线 + 自检 panel |
-| [matrix-refresh.yml](../.github/workflows/matrix-refresh.yml) | 每周一 | 重跑 Top 50，开 PR 提交聚合数据（cells 被 gitignore，只作为 artifact 上传） |
-| [verify-sample.yml](../.github/workflows/verify-sample.yml) | 每周三 | 抽检自报 cell |
-| [publish-lint.yml](../.github/workflows/publish-lint.yml) | main 上 lint 相关路径变更 | 测试 + token 预检 + 需要时 bump + `npm publish` |
-| [publish-panel.yml](../.github/workflows/publish-panel.yml) | main 上 `panel/**` 变更 | 同上，发布 panel |
+| [matrix-refresh.yml](../.github/workflows/matrix-refresh.yml) | 每周一探针；发布需手动勾选 | 重跑 Top 50，把 candidate 作为 artifact 上传；点名数据只有在显式 `publish_named_data=true` 时才提交 |
+| [verify-sample.yml](../.github/workflows/verify-sample.yml) | 手动 | 抽检自报 cell；必须提供已存在的 cells 目录 |
+| [publish-lint.yml](../.github/workflows/publish-lint.yml) | main 上 lint 相关路径变更 | 版本已在 registry 则空转；新版本需先过单测、80 包基线、打包冒烟 |
+| [publish-panel.yml](../.github/workflows/publish-panel.yml) | main 上 `panel/**` 变更 | 同上，另加打包安装 + import 冒烟 |
 
-前三个 CI workflow 用 `gh` 开 PR，不依赖第三方 action。两个 publish workflow 的**发布结果**见 [docs/17](17-release.md)：panel 0.1.6 的 bump 进了 main 但 registry 没有 0.1.6，自动发布没有被证明可靠。
+前三个 CI workflow 用 `gh` 开 PR，不依赖第三方 action。两个 publish workflow 的**发布结果**见 [docs/17](17-release.md)：panel 0.1.6 的 bump 进了 main 但 registry 没有 0.1.6，自动发布没有被证明可靠。2026-11-06 起两个 publish workflow 不再自动 bump：版本已在 registry 时 job 直接空转，发布必须来自一次显式的版本号变更，并先通过官方基线（lint）或打包 import 冒烟（panel）。
 
 ## 5. 已实测（2026-10-13，GitHub Actions / ubuntu-latest）
 
@@ -73,7 +73,7 @@ jobs:
 | --- | --- |
 | `ci.yml` | ✅ 19 秒；**第一次执行就抓到一个真实缺陷**（把父目录传给 linter），已修 |
 | `matrix-refresh.yml` | ✅ 2 分 33 秒（限定 2 插件 / 8 格）；数据与 macOS 一致 |
-| `verify-sample.yml` | ✅ 10 秒；无自报 cell 时正确空转，不开空 PR |
+| `verify-sample.yml` | ✅ 10 秒；无自报 cell 时正确空转，不开空 PR（历史记录；后来的每周调度在干净 checkout 上失败，见 §3） |
 
 ### 跨平台可复现性（Linux vs macOS，同一格）
 

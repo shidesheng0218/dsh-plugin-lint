@@ -8,8 +8,9 @@ import { ToolError } from '../shared/errors.js';
 const execFileAsync = promisify(execFile);
 const DESKTOP_ELECTRON = process.env.DSH_ELECTRON || '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness';
 const DESKTOP_CLI = process.env.DSH_CLI || '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js';
+const DESKTOP_APP = '/Applications/DeepSeek Harness.app';
 const AMBIENT_KEYS = ['PATH', 'HOME', 'NO_COLOR', 'LANG', 'LC_ALL', 'LC_CTYPE'];
-const EXPLICIT_KEYS = new Set([...AMBIENT_KEYS, 'DSH_HOME', 'ELECTRON_RUN_AS_NODE', 'PROBE_API_KEY']);
+const EXPLICIT_KEYS = new Set([...AMBIENT_KEYS, 'DSH_HOME', 'ELECTRON_RUN_AS_NODE', 'PROBE_API_KEY', 'NARB_DISABLE_NATIVE_CACHE']);
 
 export function safeEnv(overrides = {}) {
   const env = {};
@@ -30,25 +31,48 @@ export function execFileRunner(command, args, options = {}) {
   });
 }
 
+/**
+ * In-flight container harness installs, keyed by the shared dshDir. Matrix cells
+ * with the same DSH version reuse one install instead of racing four downloads
+ * into the same tree.
+ */
+const dockerDshInstalls = new Map();
+
 export async function resolveDsh(version, cacheRoot, { runner = execFileRunner, environment } = {}) {
   if (!version || version === 'desktop') {
+    // The CLI lives inside app.asar, which existsSync cannot traverse; check the
+    // app bundle (or an explicit override) instead.
+    const available = Boolean(process.env.DSH_CLI) || existsSync(DESKTOP_APP) || existsSync(DESKTOP_CLI);
+    if (!available) {
+      throw new ToolError('DSH_NOT_FOUND', 'The desktop DSH was not found; pass --dsh <npm-version> to use the Docker backend.');
+    }
     return { id: 'desktop', kind: 'desktop', version: 'desktop', node: DESKTOP_ELECTRON, cli: DESKTOP_CLI, extraArgs: ['--expose-internals'] };
   }
   if (environment?.isolation === 'docker') {
     const dir = environment.dshDir;
     const cli = join(dir, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js');
     if (!existsSync(cli)) {
-      await environment.boot({
-        dsh: { kind: 'npm', cli: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', extraArgs: [] },
-        args: [
-          'install', '--prefix', '/dsh', '--no-audit', '--no-fund', '--silent',
-          '--cache', '/tmp/npm-cache', '--registry=https://registry.npmjs.org/',
-          '@deepseek-ai/dsh@' + version,
-        ],
-        env: { HOME: '/tmp' },
-        network: 'registry',
-        writableDsh: true,
-      });
+      let pending = dockerDshInstalls.get(dir);
+      if (!pending) {
+        pending = (async () => {
+          await environment.boot({
+            dsh: { kind: 'npm', cli: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', extraArgs: [] },
+            args: [
+              'install', '--prefix', '/dsh', '--no-audit', '--no-fund', '--silent',
+              '--cache', '/profile/.npm-cache', '--registry=https://registry.npmjs.org/',
+              '@deepseek-ai/dsh@' + version,
+            ],
+            env: { HOME: '/profile' },
+            network: 'registry',
+            writableDsh: true,
+            // Installing the harness is a one-time cold-cache download; the normal
+            // boot timeout (180 s) is too short for it.
+            timeoutMs: 600000,
+          });
+        })().finally(() => dockerDshInstalls.delete(dir));
+        dockerDshInstalls.set(dir, pending);
+      }
+      await pending;
     }
     if (!existsSync(cli)) throw new ToolError('ARTIFACT_MISSING', 'DSH installation did not produce the expected CLI.');
     return {
@@ -132,6 +156,7 @@ export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
     });
     let out = '';
     let finished = false;
+    let readyScheduled = false;
     // Keep the grace and timeout timers referenced until the promise settles.
     // An unref'd timer does not keep the event loop alive, so on a fast or
     // containerized scheduler the loop can be considered idle — and the test
@@ -163,11 +188,20 @@ export function runUntilReady(dsh, home, args, env, readyRe, options = {}) {
     };
     const feed = (chunk) => {
       out += chunk;
-      if (readyRe.test(out)) later(finish, graceMs);
+      if (!readyScheduled && readyRe.test(out)) {
+        readyScheduled = true;
+        later(finish, graceMs);
+      }
     };
     child.stdout.on('data', feed);
     child.stderr.on('data', feed);
-    child.on('exit', () => { if (!finished) { finished = true; resolve(out); } });
+    child.on('exit', () => {
+      if (finished) return;
+      finished = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+      resolve(out);
+    });
     later(finish, timeoutMs);
   });
 }
