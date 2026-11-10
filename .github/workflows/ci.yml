@@ -71,8 +71,14 @@ jobs:
       - name: Isolated Docker probe
         run: |
           set -uo pipefail
-          node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache /tmp/dsh-probe-cache > /tmp/probe.log 2>&1
+          # The cache must live on an exec-capable filesystem: native addons
+          # mmap from it, and some runner /tmp mounts are noexec.
+          CACHE="$RUNNER_TEMP/dsh-probe-cache"
+          set +e
+          node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache "$CACHE" > /tmp/probe.log 2>&1
           status=$?
+          set -e
           cat /tmp/probe.log
+          findmnt -no TARGET,OPTIONS "$CACHE" 2>/dev/null || true
           if [ "$status" -ne 0 ]; then exit "$status"; fi
           grep -q '"status": "active"' /tmp/probe.log

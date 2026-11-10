@@ -65,9 +65,10 @@ export async function resolveDsh(version, cacheRoot, { runner = execFileRunner, 
             env: { HOME: '/profile' },
             network: 'registry',
             writableDsh: true,
-            // Installing the harness is a one-time cold-cache download; the normal
-            // boot timeout (180 s) is too short for it.
-            timeoutMs: 600000,
+            // Installing the harness is a one-time cold-cache download. A cold run can
+            // take 15 minutes on a slow network; the normal boot timeout is far
+            // too short for it.
+            timeoutMs: 1200000,
           });
         })().finally(() => dockerDshInstalls.delete(dir));
         dockerDshInstalls.set(dir, pending);
