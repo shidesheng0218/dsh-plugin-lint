@@ -70,7 +70,9 @@ jobs:
       # shared cache then makes the remaining cells cheap.
       - name: Isolated Docker probe
         run: |
-          set -euo pipefail
+          set -uo pipefail
           node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache /tmp/dsh-probe-cache > /tmp/probe.log 2>&1
+          status=$?
           cat /tmp/probe.log
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
           grep -q '"status": "active"' /tmp/probe.log
