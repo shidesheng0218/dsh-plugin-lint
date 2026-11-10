@@ -421,13 +421,13 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # node --test test/*.test.js: 366 cases across 41 files
+npm test                 # node --test test/*.test.js: 381 cases across 43 files
 npm run test:coverage    # lines >=85%, branches >=80%, functions >=80%
 npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
 npm run package:smoke    # pack both tarballs, install them, run every bin and entry point
 ```
 
-At this revision the suite has **366 node:test cases across 41 files**, and coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+At this revision the suite has **381 node:test cases across 43 files**, and coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
 
 `npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
@@ -627,12 +627,12 @@ node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkou
 ### 测试
 
 ```bash
-npm test   # node --test test/*.test.js：366 个用例，41 个文件
+npm test   # node --test test/*.test.js：381 个用例，43 个文件
 npm run test:coverage   # 行 ≥85%、分支 ≥80%、函数 ≥80%
 npm run package:smoke   # 打包两个 tarball、安装、运行全部 bin 与入口
 ```
 
-当前 revision 的实测：366 个 `node:test` 用例、41 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
+当前 revision 的实测：381 个 `node:test` 用例、43 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 

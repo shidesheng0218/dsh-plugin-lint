@@ -55,8 +55,8 @@
 
 | 检查 | 结果 |
 | --- | --- |
-| `npm test` | 366 通过 / 0 失败 |
-| `npm run test:coverage` | 行 88.8% / 分支 80.1% / 函数 90.7%（门槛 85/80/80） |
+| `npm test` | 381 通过 / 0 失败 |
+| `npm run test:coverage` | 行 91.1% / 分支 82.2% / 函数 91.2%（门槛 85/80/80） |
 | 官方 80 包零误报基线 | 0 error · 0 warn，PASS |
 | 自检 `panel` + `test/probe-plugins` | 0 error / 0 warn |
 | `node scripts/package-smoke.mjs` | 根包与 panel 真实 tarball 安装、全部 bin `--help`、核心/实验导出、panel import 均通过 |

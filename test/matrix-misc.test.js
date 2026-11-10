@@ -1,9 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { migrateCellV1, readCellAny } from '../src/matrix/migrate.js';
 import { escapeHtml, renderSite } from '../src/matrix/site.js';
 import { createCell, recommendationEligible, selectCells } from '../src/matrix/cell.js';
+import { cacheKeyFor } from '../src/matrix/cache.js';
+import { cellFilePath, readCells, writeCell } from '../src/matrix/cells.js';
 import { cellInput, v1ActiveVerified } from './matrix-helpers.js';
+
+function dir(t) {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-matrix-misc-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  return root;
+}
 
 test('migrateCellV1 marks a legacy cell unpinned and ineligible', () => {
   const migrated = migrateCellV1(v1ActiveVerified());
@@ -93,4 +104,47 @@ test('renderSite handles an empty index and escapeHtml covers every entity', () 
   assert.match(html, /0 cells · 0 plugins · 0 DSH versions/);
   assert.match(html, /source unknown/);
   assert.equal(escapeHtml('&<>"\''), '&amp;&lt;&gt;&quot;&#39;');
+});
+test('cacheKeyFor rejects every incomplete identity input', () => {
+  const artifact = { name: 'demo', resolvedVersion: '1.0.0', integrity: 'sha512-x' };
+  const base = { artifact, dshVersion: '0.2.0', composition: 'headless', probeVersion: '0.4.0' };
+  const cases = [
+    { artifact: undefined },
+    { artifact: { ...artifact, name: undefined } },
+    { artifact: { ...artifact, resolvedVersion: undefined } },
+    { artifact: { name: 'demo', resolvedVersion: '1.0.0' } },
+    { dshVersion: undefined },
+    { composition: undefined },
+    { probeVersion: undefined },
+  ];
+  for (const override of cases) {
+    assert.throws(() => cacheKeyFor({ ...base, ...override }), (error) => error.code === 'CACHE_INPUT_INVALID');
+  }
+  assert.equal(cacheKeyFor(base).length, 64);
+  const local = cacheKeyFor({ ...base, artifact: { name: 'demo', resolvedVersion: '1.0.0', sourceDigest: 'sha256-y', local: true } });
+  assert.equal(local.length, 64);
+});
+
+test('writeCell guards the schema and readCells reports damaged files', (t) => {
+  const root = dir(t);
+  assert.throws(() => writeCell(root, v1ActiveVerified()), (error) => error.code === 'CELL_SCHEMA_UNSUPPORTED');
+  const invalid = { ...createCell(cellInput()), cacheKey: 'bad' };
+  assert.throws(() => writeCell(root, invalid), (error) => error.code === 'CELL_INVALID');
+
+  const cellsDir = join(root, 'cells');
+  const cell = createCell(cellInput());
+  const path = writeCell(cellsDir, cell);
+  assert.match(path, /demo\/1\.2\.3\/0\.2\.0-rc\.2\+headless\.[0-9a-f]{16}\.json/);
+  const scoped = { ...cell, plugin: { ...cell.plugin, name: '@scope/name', resolvedVersion: '1.0.0+build' } };
+  assert.match(cellFilePath(root, scoped), /scope_name\/1\.0\.0_build\//);
+
+  mkdirSync(join(cellsDir, 'nested'), { recursive: true });
+  writeFileSync(join(cellsDir, 'nested', 'broken.json'), '{nope');
+  writeFileSync(join(cellsDir, 'run-manifest.json'), JSON.stringify({ schemaVersion: 2 }));
+  writeFileSync(join(cellsDir, 'note.txt'), 'ignored');
+  const reads = readCells(cellsDir);
+  assert.equal(reads.some((entry) => entry.kind === 'run-manifest'), true);
+  assert.equal(reads.some((entry) => entry.ok === false), true);
+  assert.equal(reads.some((entry) => entry.path.endsWith('note.txt')), false);
+  assert.throws(() => readCells(join(root, 'absent')), (error) => error.code === 'CELL_READ_FAILED');
 });

