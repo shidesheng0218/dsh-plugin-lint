@@ -124,6 +124,9 @@ test('docker hardens every run, separates network phases, and force-cleans conta
   // Docker mounts /tmp noexec; the native-addon cache must be disabled or the
   // loader cannot dlopen its copied .node file.
   assert.equal(runs[0].args.includes('--env=NARB_DISABLE_NATIVE_CACHE=1'), true);
+  // The pnpm shim's npx cache is shared across cells, not re-downloaded per cell.
+  assert.equal(runs[0].args.some((arg) => arg.startsWith('--volume=') && arg.endsWith(':/tools:rw')), true);
+  assert.equal(runs[0].args.includes('--env=npm_config_cache=/tools/npm'), true);
   await environment.destroy();
   const removals = runner.calls.filter((call) => call.args[0] === 'rm');
   assert.equal(removals.length >= 2, true);

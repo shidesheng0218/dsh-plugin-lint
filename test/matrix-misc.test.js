@@ -148,3 +148,16 @@ test('writeCell guards the schema and readCells reports damaged files', (t) => {
   assert.equal(reads.some((entry) => entry.path.endsWith('note.txt')), false);
   assert.throws(() => readCells(join(root, 'absent')), (error) => error.code === 'CELL_READ_FAILED');
 });
+
+test('createCell coerces a troublesome error code into the schema vocabulary', () => {
+  const cell = createCell(cellInput({
+    observation: {
+      outcome: 'error',
+      error: { code: 1, message: 'numeric exec code' },
+      durationMs: 1,
+      reproduce: { command: 'node probe' },
+    },
+  }));
+  assert.equal(cell.run.error.code, '1');
+  assert.equal(typeof cell.run.error.code, 'string');
+});

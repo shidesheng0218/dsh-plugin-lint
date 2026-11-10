@@ -52,7 +52,7 @@ export async function preflightDocker({ runner, timeoutMs = 10000 }) {
   });
 }
 
-export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir, timeoutMs, network, runner, materialize }) {
+export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir, toolDir, timeoutMs, network, runner, materialize }) {
   const containers = new Set();
   const networks = new Set();
 
@@ -73,6 +73,9 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
       // them there; Docker mounts /tmp noexec, so the copy cannot be mapped.
       // Loading straight from the read-only package tree works.
       NARB_DISABLE_NATIVE_CACHE: '1',
+      // Share the npx/pnpm download cache across cells when the environment
+      // provides a shared tool directory.
+      ...(toolDir ? { npm_config_cache: '/tools/npm' } : {}),
       ...env,
     });
     return [
@@ -88,6 +91,7 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
       `--volume=${sourceDir}:/source:ro`,
       `--volume=${profileDir}:/profile:rw`,
       `--volume=${dshDir}:/dsh:${writableDsh ? 'rw' : 'ro'}`,
+      ...(toolDir ? [`--volume=${toolDir}:/tools:rw`] : []),
       '--tmpfs=/tmp:rw,nosuid,nodev,size=128m',
       '--workdir=/profile',
       ...Object.entries(containerEnv).map(([key, value]) => `--env=${key}=${value}`),

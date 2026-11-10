@@ -162,13 +162,31 @@ export async function runMatrix({
     } finally {
       if (stub?.server) stub.server.close();
     }
-    const cell = createCell({
-      artifact: task.artifact,
-      dsh: { version: task.version, source: task.version === 'desktop' ? 'desktop' : 'npm', composition: task.composition },
-      observation,
-      isolation: environment?.isolation || backend,
-      probeVersion: PROBE_VERSION,
-    });
+    let cell;
+    try {
+      cell = createCell({
+        artifact: task.artifact,
+        dsh: { version: task.version, source: task.version === 'desktop' ? 'desktop' : 'npm', composition: task.composition },
+        observation,
+        isolation: environment?.isolation || backend,
+        probeVersion: PROBE_VERSION,
+      });
+    } catch (error) {
+      // A cell that cannot be represented is an infrastructure error for that
+      // cell, not a reason to abort the remaining queue.
+      cell = createCell({
+        artifact: task.artifact,
+        dsh: { version: task.version, source: task.version === 'desktop' ? 'desktop' : 'npm', composition: task.composition },
+        observation: {
+          outcome: 'error',
+          error: { code: 'CELL_BUILD_FAILED', message: String(error?.message || error) },
+          entries: [],
+          durationMs: observation?.durationMs || 0,
+        },
+        isolation: environment?.isolation || backend,
+        probeVersion: PROBE_VERSION,
+      });
+    }
     const path = writeCell(outDir, cell);
     if (cell.run.outcome === 'completed' && cacheRoot !== outDir) writeCell(cacheRoot, cell);
     return { cell, path, cached: false };

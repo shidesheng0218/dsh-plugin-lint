@@ -39,7 +39,12 @@ export function createCell(input) {
   if (input.verification) cell.run.verification = input.verification;
   if (input.dispute) cell.run.dispute = input.dispute;
   if (observation.outcome === 'error') {
-    cell.run.error = { code: observation.error.code, message: observation.error.message };
+    // Infrastructure errors can arrive with a numeric exec code; the cell
+    // schema requires non-empty strings.
+    cell.run.error = {
+      code: String(observation.error?.code || 'PROBE_FAILED'),
+      message: String(observation.error?.message || 'The probe could not complete.'),
+    };
   } else {
     cell.result = observation.result;
     cell.evidence = { note: observation.note || '', outputSha256: observation.outputSha256 };

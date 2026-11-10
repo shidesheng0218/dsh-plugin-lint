@@ -10,7 +10,7 @@ const DESKTOP_ELECTRON = process.env.DSH_ELECTRON || '/Applications/DeepSeek Har
 const DESKTOP_CLI = process.env.DSH_CLI || '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh/lib/bin.js';
 const DESKTOP_APP = '/Applications/DeepSeek Harness.app';
 const AMBIENT_KEYS = ['PATH', 'HOME', 'NO_COLOR', 'LANG', 'LC_ALL', 'LC_CTYPE'];
-const EXPLICIT_KEYS = new Set([...AMBIENT_KEYS, 'DSH_HOME', 'ELECTRON_RUN_AS_NODE', 'PROBE_API_KEY', 'NARB_DISABLE_NATIVE_CACHE']);
+const EXPLICIT_KEYS = new Set([...AMBIENT_KEYS, 'DSH_HOME', 'ELECTRON_RUN_AS_NODE', 'PROBE_API_KEY', 'NARB_DISABLE_NATIVE_CACHE', 'npm_config_cache']);
 
 export function safeEnv(overrides = {}) {
   const env = {};
@@ -59,7 +59,9 @@ export async function resolveDsh(version, cacheRoot, { runner = execFileRunner, 
             dsh: { kind: 'npm', cli: '/usr/local/lib/node_modules/npm/bin/npm-cli.js', extraArgs: [] },
             args: [
               'install', '--prefix', '/dsh', '--no-audit', '--no-fund', '--silent',
-              '--cache', '/profile/.npm-cache', '--registry=https://registry.npmjs.org/',
+              // The shared tool volume keeps the harness tarballs across cells
+              // and across DSH versions instead of downloading them again.
+              '--cache', '/tools/npm', '--registry=https://registry.npmjs.org/',
               '@deepseek-ai/dsh@' + version,
             ],
             env: { HOME: '/profile' },
