@@ -1,4 +1,6 @@
-# 20 · v0.3.0 release notes（draft，未发布）
+# 20 · v0.3.0 release notes（draft，被 0.4.0 取代）
+
+> **状态：历史草稿。** 0.3.x 从未发布；v0.3 的分析能力与 v0.4 的矩阵/面板重写一起进入 lint `0.4.0` 与 panel `0.2.0`。当前发布候选见 [docs/21](21-release-0.4.0.md)，发布对账见 [docs/17](17-release.md)。本文件保留为当时的实现记录，不再作为发布公告。
 
 > **状态：draft。** 工作区版本是 0.3.0，**没有发布**。npm 上 `@shidesheng0218/dsh-plugin-lint` 最新是 0.1.0（2026-10-14），`@shidesheng0218/dsh-plugin-lint-panel` 最新是 0.1.5。本文件是发布前的工作草稿，不是发布公告；发布对账状态见 [docs/17](17-release.md)。
 

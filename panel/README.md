@@ -8,7 +8,7 @@ The host is split into `profile/`, `matrix/`, `payload/`, `update/`, `actions/`,
 
 `recorded-active` means that an isolated probe previously recorded `active`; it does **not** mean that the currently running profile is healthy or that its browser client was exercised. The UI uses recorded / attention / unverified rather than a live-health score. Matrix cells retain their composition and trust metadata, and static conflict candidates remain separate from runtime results.
 
-Action requests require `content-type: application/json`, `x-dsh-plugin-lint-action: 1`, `confirmed: true`, a valid package name, and an installed exact version. The panel itself and first-party bundles are protected server-side. Execution uses `execFile`, a per-profile lock, and a sanitized audit (no env, argv, stdout, stderr, or tokens). **These server-side checks are in the unreleased 0.1.6.** The published 0.1.5 predates them: its action route has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`. Do not install 0.1.5 into a profile that runs untrusted plugins; see Install.
+Action requests require `content-type: application/json`, `x-dsh-plugin-lint-action: 1`, `confirmed: true`, a valid package name, and an installed exact version. The panel itself and first-party bundles are protected server-side. Execution uses `execFile`, a per-profile lock, and a sanitized audit (no env, argv, stdout, stderr, or tokens). **These server-side checks are in the unreleased 0.2.0 release candidate.** The published 0.1.5 predates them: its action route has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`. Do not install 0.1.5 into a profile that runs untrusted plugins; see Install.
 
 **DSH authentication evidence:** the supported `@deepseek-ai/dsh-client-connection` packages at `0.2.0-rc.2` and `0.2.1-alpha.2` implement a signed, authority-bound browser cookie (`lib/index.js`, `BrowserAuth`) and a Host/Origin request fence (`isTrustedApiRequest`). A missing `Origin` is explicitly accepted by that implementation, so it is not treated as a vulnerability here. When `Origin` is present, this panel requires it to match the forwarded `Host` header (the bridge rewrites `request.url` to `http://dsh.internal`, so the URL host is not the browser's authority), and also enforces JSON, the custom action header, confirmation, and installation state.
 
@@ -46,7 +46,7 @@ Current local snapshot: 50 plugins × 2 DSH versions × 2 compositions = 200 cel
 ## Install
 
 ```bash
-# from npm (latest published version: 0.1.5; the 0.1.6 in this checkout is unpublished)
+# from npm (latest published version: 0.1.5; the 0.2.0 in this checkout is a release candidate, unpublished)
 dsh plugin --profile <profile> add @shidesheng0218/dsh-plugin-lint-panel
 ```
 
@@ -54,7 +54,7 @@ dsh plugin --profile <profile> add @shidesheng0218/dsh-plugin-lint-panel
 > naming a plugin and runs `dsh plugin --profile desktop remove/add` without a
 > confirmation, protected-package, or installed-only check. Any same-origin
 > plugin client can call it, and on a non-desktop profile it mutates the desktop
-> profile. Install 0.1.6 (or a later release) when it is available, or keep the
+> profile. Install 0.2.0 (or a later release) when it is available, or keep the
 > panel out of profiles that run untrusted plugins until then.
 
 Per-plugin matrix rows require a snapshot (see above); no checkout is needed only after a `matrix/public/` artifact is published. From a checkout you can pre-seed the snapshot with `node scripts/matrix/bundle-panel-data.mjs`, then `dsh plugin --profile <profile> add <absolute path to this directory>`.

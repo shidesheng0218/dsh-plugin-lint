@@ -182,7 +182,7 @@ See [docs/11](docs/11-m4-capability-probe.md).
 
 ## Usage
 
-The npm release is **0.1.0** (published 2026-10-14). This checkout is **0.3.0, unpublished**; the analysis commands described below exist only in the checkout.
+The npm release is **0.1.0** (published 2026-10-14). This checkout is the **0.4.0 release candidate, unpublished**; the analysis commands described below exist only in the checkout.
 
 ```bash
 npx @shidesheng0218/dsh-plugin-lint .            # lint the package in the current directory
@@ -199,7 +199,7 @@ To run the checkout instead of the npm release, use `node bin/dsh-plugin-lint.mj
 
 ## v0.3 analysis (experimental, unpublished)
 
-The workspace is at 0.3.0; the latest npm release is 0.1.0. The four capabilities below ship in the checkout only and are **experimental**: they are static heuristics over files on disk. None of them executes a plugin, measures runtime cost, or issues a security verdict. A clean run means no pattern matched.
+The workspace is at 0.4.0 (release candidate); the latest npm release is 0.1.0. The four capabilities below ship in the checkout only and are **experimental**: they are static heuristics over files on disk. None of them executes a plugin, measures runtime cost, or issues a security verdict. A clean run means no pattern matched.
 
 | Command | The question it answers |
 | --- | --- |
@@ -274,7 +274,7 @@ const perf = analyzePerformance(loadPackage('./plugin-a'));   // { score, rating
 const security = analyzeSecurityDeep(loadPackage('./plugin-a')); // { findings, summary, riskLevel, experimental, limits, … }
 ```
 
-The published 0.1.0 package predates these exports. See [docs/19](docs/19-analysis-tools.md) for field-level documentation and [docs/20](docs/20-release-0.3.0.md) for the draft release notes.
+The published 0.1.0 package predates these exports. See [docs/19](docs/19-analysis-tools.md) for field-level documentation and [docs/21](docs/21-release-0.4.0.md) for the 0.4.0 release notes (draft).
 
 ## The compatibility matrix
 
@@ -351,7 +351,7 @@ It is not "the last one wins" — the later plugin is discarded whole. And becau
 
 [`panel/`](panel/) is a real DSH plugin: a settings section — titled **Plugin Health Center** — listing what this profile has installed, how each plugin fares across DSH versions, and, below the table, aggregate ecosystem counts per version (never a package name). The screenshot at the top of this file was captured by [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) in a throwaway web profile.
 
-The panel reads two data files: the full matrix snapshot when one exists locally (`data/matrix-index.json`, overridable with `DSH_PLUGIN_LINT_INDEX`), and the aggregate that ships in the npm package (`data/aggregate.json`, counts only). **An npm-installed panel therefore shows the ecosystem counts and marks installed plugins as uncovered; per-plugin rows need a local matrix snapshot.** The npm release is panel 0.1.5; the 0.1.6 in this checkout is unpublished. The published 0.1.5 predates the server-side action guards in this checkout (it has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`), so do not install it into a profile that runs untrusted plugins until a fixed release ships.
+The panel reads two data files: the full matrix snapshot when one exists locally (`data/matrix-index.json`, overridable with `DSH_PLUGIN_LINT_INDEX`), and the aggregate that ships in the npm package (`data/aggregate.json`, counts only). **An npm-installed panel therefore shows the ecosystem counts and marks installed plugins as uncovered; per-plugin rows need a local matrix snapshot.** The npm release is panel 0.1.5; the 0.2.0 in this checkout is a release candidate, unpublished. The published 0.1.5 predates the server-side action guards in this checkout (it has no content-type, confirmation, protected-package, or installed-only check and hardcodes `--profile desktop`), so do not install it into a profile that runs untrusted plugins until a fixed release ships.
 
 With no per-plugin data, the page still shows the matrix overview: 50 plugins across 2 DSH versions, with 80 of 100 cells active on 0.2.0-rc.2 and 72 of 100 on 0.2.1-alpha.2.
 
@@ -421,11 +421,13 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # node --test test/*.test.js: 270 cases across 31 files
+npm test                 # node --test test/*.test.js: 366 cases across 41 files
+npm run test:coverage    # lines >=85%, branches >=80%, functions >=80%
 npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
+npm run package:smoke    # pack both tarballs, install them, run every bin and entry point
 ```
 
-At this revision the suite has **270 node:test cases across 31 files**. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+At this revision the suite has **366 node:test cases across 41 files**, and coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
 
 `npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
@@ -555,7 +557,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 [`panel/`](panel/) 是一个真实的 DSH 插件：设置页里一个 **Plugin Health Center** 区块，列出当前 profile 装了哪些插件、每个插件在各 DSH 版本上的兼容性结论，下方是各版本 active / awaiting-service / rejected-by-host / install-failed 的聚合计数（只有数字，没有包名）。本文顶部的截图由 [`scripts/screenshot-panel.mjs`](scripts/screenshot-panel.mjs) 在一次性 web profile 里截取。
 
-面板读两个数据文件：本地存在全量矩阵快照时读 `data/matrix-index.json`（可用 `DSH_PLUGIN_LINT_INDEX` 覆盖），否则读 npm 包里随附的 `data/aggregate.json`（只有计数）。**因此从 npm 安装的面板只显示聚合数据，逐插件矩阵列需要本地快照。** npm 上的面板版本是 0.1.5；本工作区的 0.1.6 未发布。已发布的 0.1.5 早于本仓库的服务端动作校验（没有 content-type、确认、受保护包或已安装校验，且硬编码 `--profile desktop`），在运行不受信插件的 profile 里先不要安装，直到修复版发布。
+面板读两个数据文件：本地存在全量矩阵快照时读 `data/matrix-index.json`（可用 `DSH_PLUGIN_LINT_INDEX` 覆盖），否则读 npm 包里随附的 `data/aggregate.json`（只有计数）。**因此从 npm 安装的面板只显示聚合数据，逐插件矩阵列需要本地快照。** npm 上的面板版本是 0.1.5；本工作区的 0.2.0 是未发布的 release candidate。已发布的 0.1.5 早于本仓库的服务端动作校验（没有 content-type、确认、受保护包或已安装校验，且硬编码 `--profile desktop`），在运行不受信插件的 profile 里先不要安装，直到修复版发布。
 
 没有逐插件数据时，页面仍展示矩阵全景：50 个插件 × 2 个版本，0.2.0-rc.2 上 100 格里 80 格 active，0.2.1-alpha.2 上 72 格 active。
 
@@ -563,7 +565,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 ### v0.3 分析能力（experimental，未发布）
 
-工作区版本 0.3.0；npm 最新发布是 0.1.0。下面四个能力（`full` 是组合命令）只在源码 checkout 里存在，且都是 **experimental**：对磁盘文件做静态启发式检查，不执行插件、不做运行时测量、不做安全裁决。干净运行只代表没有模式命中。
+工作区版本 0.4.0（release candidate）；npm 最新发布是 0.1.0。下面四个能力（`full` 是组合命令）只在源码 checkout 里存在，且都是 **experimental**：对磁盘文件做静态启发式检查，不执行插件、不做运行时测量、不做安全裁决。干净运行只代表没有模式命中。
 
 | 命令 | 回答的问题 |
 | --- | --- |
@@ -579,7 +581,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 `dsh-plugin-upgrade-plan` 读 profile 已装 bundle 与本地矩阵（默认 `matrix/cells`，可用 `--matrix <dir>` 指定），不访问网络、不查 npm 新版本；分析模式退出码 0 无需动作 / 1 需更新或无兼容版本 / 2 运行失败（含无矩阵数据）；`--check-compatibility` 0 兼容 / 1 不兼容 / 2 未知或无数据。矩阵不在 npm 包内且 `matrix/cells/` 被 gitignore，覆盖范围是快照里的 50 个插件。
 
-API 见 [docs/19](docs/19-analysis-tools.md)，未发布版本的 release notes 见 [docs/20](docs/20-release-0.3.0.md)。
+API 见 [docs/19](docs/19-analysis-tools.md)，未发布版本的 release notes 见 [docs/21](docs/21-release-0.4.0.md)。
 
 ### 联邦机制
 
@@ -607,7 +609,7 @@ API 见 [docs/19](docs/19-analysis-tools.md)，未发布版本的 release notes 
 
 ### 用法
 
-npm 发布版本是 **0.1.0**（2026-10-14 发布）。本工作区是 **0.3.0，未发布**；下文的分析命令只在源码 checkout 里存在。
+npm 发布版本是 **0.1.0**（2026-10-14 发布）。本工作区是 **0.4.0 release candidate，未发布**；下文的分析命令只在源码 checkout 里存在。
 
 ```bash
 npx @shidesheng0218/dsh-plugin-lint .            # 体检当前目录的插件（npm 0.1.0）
@@ -625,14 +627,16 @@ node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkou
 ### 测试
 
 ```bash
-npm test   # node --test test/*.test.js：270 个用例，31 个文件
+npm test   # node --test test/*.test.js：366 个用例，41 个文件
+npm run test:coverage   # 行 ≥85%、分支 ≥80%、函数 ≥80%
+npm run package:smoke   # 打包两个 tarball、安装、运行全部 bin 与入口
 ```
 
-当前 revision 的实测：270 个 `node:test` 用例、31 个测试文件，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
+当前 revision 的实测：366 个 `node:test` 用例、41 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 
-[生态调研](docs/01-ecosystem-map.md) · [决策记录](docs/05-decision-log.md) · [详细设计](docs/06-detailed-design.md) · [M1 结果](docs/07-m1-results.md) · [作者通知](docs/08-author-notification.md) · [生态测量](docs/09-ecosystem-measurements.md) · [探针验证](docs/10-m4-verification.md) · [能力探针](docs/11-m4-capability-probe.md) · [联邦机制](docs/15-federation.md) · [面板](docs/16-m5-panel.md) · [发布记录](docs/17-release.md) · [构成冲突](docs/18-composition-conflicts.md) · [分析工具](docs/19-analysis-tools.md) · [v0.3.0 release notes（draft）](docs/20-release-0.3.0.md)
+[生态调研](docs/01-ecosystem-map.md) · [决策记录](docs/05-decision-log.md) · [详细设计](docs/06-detailed-design.md) · [M1 结果](docs/07-m1-results.md) · [作者通知](docs/08-author-notification.md) · [生态测量](docs/09-ecosystem-measurements.md) · [探针验证](docs/10-m4-verification.md) · [能力探针](docs/11-m4-capability-probe.md) · [联邦机制](docs/15-federation.md) · [面板](docs/16-m5-panel.md) · [发布记录](docs/17-release.md) · [构成冲突](docs/18-composition-conflicts.md) · [分析工具](docs/19-analysis-tools.md) · [v0.4.0 release notes（draft）](docs/21-release-0.4.0.md) · [v0.3.0 历史草稿](docs/20-release-0.3.0.md)
 
 ## License / 许可证
 

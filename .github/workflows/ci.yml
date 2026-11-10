@@ -5,19 +5,46 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Unit tests
+        run: npm test
+
+  coverage:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
 
-      - name: Unit tests
-        run: npm test
+      - name: Coverage gate (lines 85 / branches 80 / functions 80)
+        run: npm run test:coverage
 
-      - name: Fetch official packages from npm
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Fetch the official packages
         run: node scripts/fetch-official-from-npm.mjs --limit 80
 
       - name: Zero-false-positive baseline
@@ -26,10 +53,24 @@ jobs:
       - name: Lint our own plugin and fixtures
         run: node bin/dsh-plugin-lint.mjs panel test/probe-plugins --no-color --exit-code
 
-      - name: Package smoke test
+      - name: Packed-artifact smoke (all bins, both entry points, panel import)
+        run: node scripts/package-smoke.mjs
+
+  probe-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Runs the real Docker backend against a controlled fixture. The first
+      # run installs the harness inside the container (several minutes); the
+      # shared cache then makes the remaining cells cheap.
+      - name: Isolated Docker probe
         run: |
-          npm pack --silent
-          mkdir -p /tmp/pack-smoke && cd /tmp/pack-smoke
-          npm init -y >/dev/null 2>&1
-          npm install --silent "$GITHUB_WORKSPACE"/*.tgz
-          ./node_modules/.bin/dsh-plugin-lint "$GITHUB_WORKSPACE/panel" --quiet --no-color
+          set -euo pipefail
+          node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache /tmp/dsh-probe-cache > /tmp/probe.log 2>&1
+          cat /tmp/probe.log
+          grep -q '"status": "active"' /tmp/probe.log

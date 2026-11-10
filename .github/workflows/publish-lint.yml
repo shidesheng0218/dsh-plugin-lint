@@ -8,11 +8,9 @@ name: publish-lint
 on:
   push:
     branches: [main]
+    # A release is a version bump, not a side effect of merging code. Only a
+    # package.json change can publish; src-only merges run ci.yml instead.
     paths:
-      - 'src/**'
-      - 'bin/**'
-      - 'scripts/lib/**'
-      - 'scripts/probe-boot.mjs'
       - 'package.json'
   workflow_dispatch:
 

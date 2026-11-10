@@ -2,13 +2,13 @@
 
 ## 0. 状态与范围
 
-v0.3.0 新增四项分析能力：组合冲突检测、性能分析、安全深析、升级路径。四项都标记为 **experimental**：
+v0.4.0 新增四项分析能力：组合冲突检测、性能分析、安全深析、升级路径。四项都标记为 **experimental**：
 
 - 全部是对磁盘文件的**静态启发式检查**——不执行插件、不做运行时测量、不做安全裁决；
 - `analyze` 的结果对象带 `experimental: true` 与 `limits` 数组（`full` 的 `limits` 在 performance/security 子报告里），报告自己说明边界；`upgrade-plan` 的 JSON 不带这两个字段；
 - 干净运行只代表没有模式命中，不代表插件安全、快速或可组合。
 
-**发布状态：** 工作区版本 `@shidesheng0218/dsh-plugin-lint` 0.3.0，未发布；npm 最新发布是 0.1.0（2026-10-14），其中只有 `dsh-plugin-lint` 与 `dsh-plugin-probe` 两个 bin，没有本文的 `dsh-plugin-analyze` / `dsh-plugin-upgrade-plan`。因此本文的命令都要**从源码 checkout 运行**（`node bin/...`），不能通过 `npx` 获得。
+**发布状态：** 工作区版本 `@shidesheng0218/dsh-plugin-lint` 0.4.0（release candidate），未发布；npm 最新发布是 0.1.0（2026-10-14），其中只有 `dsh-plugin-lint` 与 `dsh-plugin-probe` 两个 bin，没有本文的 `dsh-plugin-analyze` / `dsh-plugin-upgrade-plan`。因此本文的命令都要**从源码 checkout 运行**（`node bin/...`），不能通过 `npx` 获得。
 
 代码位置：`src/composition.js`、`src/performance.js`、`src/security.js`、`bin/dsh-plugin-analyze.mjs`、`bin/dsh-plugin-upgrade-plan.mjs`；导出在 `src/index.js`。
 

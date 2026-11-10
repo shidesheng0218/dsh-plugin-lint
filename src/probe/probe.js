@@ -49,8 +49,14 @@ export function parseInactive(text) {
 export function awaitedServices(entries) {
   const services = [];
   for (const entry of entries) {
-    const match = /waiting for service:\s*([^)\s]+)/.exec(entry.reason || '');
-    if (match) services.push(match[1]);
+    // The host prints "waiting for service: x" for one and "waiting for
+    // services: x, y" for several; both must reach the cell.
+    const match = /waiting for services?:\s*([^)]+)/.exec(entry.reason || '');
+    if (!match) continue;
+    for (const name of match[1].split(',')) {
+      const service = name.trim();
+      if (service) services.push(service);
+    }
   }
   return [...new Set(services)];
 }
