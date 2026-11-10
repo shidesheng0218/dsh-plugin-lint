@@ -130,10 +130,16 @@ function toolDiff(before, after) {
 }
 
 function publicError(error) {
-  return {
-    code: error?.code || 'PROBE_FAILED',
-    message: error instanceof ToolError ? error.message : 'The probe could not complete because of an internal or host failure.',
-  };
+  const code = typeof error?.code === 'string' && error.code !== '' ? error.code : 'PROBE_FAILED';
+  // Keep a short, redacted tail of the child output: a generic message makes
+  // an infrastructure failure impossible to diagnose from the cell alone.
+  const out = String(error?.stderr || error?.stdout || '').trim();
+  const message = error instanceof ToolError
+    ? error.message
+    : out
+      ? 'The probe could not complete: ' + redact(out).slice(-400)
+      : 'The probe could not complete because of an internal or host failure.';
+  return { code, message };
 }
 
 export async function probePackage({

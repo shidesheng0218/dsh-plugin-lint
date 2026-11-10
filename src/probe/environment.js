@@ -23,11 +23,15 @@ export async function createProbeEnvironment({
   // A shared dshDir (one per DSH version under the cache root) lets consecutive
   // probe cells reuse the harness install instead of downloading it per cell.
   const dshDir = sharedDshDir ? resolve(sharedDshDir) : join(root, 'dsh');
-  for (const dir of [sourceDir, profileDir, dshDir]) mkdirSync(dir, { recursive: true });
+  // The npm cache behind the pnpm shim is shared too: without it every cell
+  // re-downloads pnpm before it can install the plugin.
+  const toolDir = join(parent, '.probe-tools');
+  for (const dir of [sourceDir, profileDir, dshDir, toolDir]) mkdirSync(dir, { recursive: true });
   chmodSync(root, 0o755);
   chmodSync(sourceDir, 0o755);
   chmodSync(profileDir, 0o777);
   chmodSync(dshDir, 0o777);
+  chmodSync(toolDir, 0o777);
   const materialize = (artifact) => materializeArtifact(artifact, sourceDir);
   try {
     if (backend === 'host-unsafe') {
@@ -37,7 +41,7 @@ export async function createProbeEnvironment({
       throw new ToolError('ISOLATION_UNSUPPORTED', `Unsupported probe backend: ${backend}`);
     }
     await preflightDocker({ runner, timeoutMs: Math.min(timeoutMs, 10000) });
-    return createDockerEnvironment({ workDir: root, sourceDir, profileDir, dshDir, timeoutMs, network, runner, materialize });
+    return createDockerEnvironment({ workDir: root, sourceDir, profileDir, dshDir, toolDir, timeoutMs, network, runner, materialize });
   } catch (error) {
     rmSync(root, { recursive: true, force: true });
     if (error instanceof ToolError) throw error;

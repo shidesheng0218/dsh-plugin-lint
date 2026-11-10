@@ -75,7 +75,7 @@ jobs:
           # mmap from it, and some runner /tmp mounts are noexec.
           CACHE="$RUNNER_TEMP/dsh-probe-cache"
           set +e
-          node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache "$CACHE" > /tmp/probe.log 2>&1
+          node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --tools --cache "$CACHE" > /tmp/probe.log 2>&1
           status=$?
           set -e
           cat /tmp/probe.log

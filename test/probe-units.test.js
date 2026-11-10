@@ -108,3 +108,10 @@ test('tools mode diffs the baseline and post-install tool lists', async (t) => {
   assert.equal(observation.systemPrompt.baselineChars > 0, true);
   assert.deepEqual(observation.packagesAdded, ['demo@1.2.3']);
 });
+test('a numeric infrastructure code becomes a schema-safe PROBE_FAILED', async (t) => {
+  const fixture = probeFixture(t);
+  fixture.environment.materialize = async () => { throw Object.assign(new Error('bad artifact'), { code: 1 }); };
+  const observation = await probePackage({ ...fixture });
+  assert.equal(observation.outcome, 'error');
+  assert.equal(observation.error.code, 'PROBE_FAILED');
+});
