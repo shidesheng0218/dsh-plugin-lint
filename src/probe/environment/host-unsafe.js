@@ -28,7 +28,12 @@ export function createHostUnsafeEnvironment({ workDir, profileDir, dshDir, timeo
       return { out };
     },
     async destroy() {
-      rmSync(workDir, { recursive: true, force: true });
+      try {
+        rmSync(workDir, { recursive: true, force: true });
+      } catch {
+        // Same rationale as the Docker backend: the per-run tree is disposable
+        // and a cleanup failure must not rewrite the verdict.
+      }
     },
   };
 }

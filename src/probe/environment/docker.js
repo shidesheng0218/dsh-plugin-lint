@@ -253,7 +253,14 @@ export function createDockerEnvironment({ workDir, sourceDir, profileDir, dshDir
       }));
       await Promise.allSettled(networkRemovals);
       networks.clear();
-      rmSync(workDir, { recursive: true, force: true });
+      try {
+        rmSync(workDir, { recursive: true, force: true });
+      } catch {
+        // The container writes npm cache directories as uid 1000; the host user
+        // may not be able to traverse them. The tree lives under the per-run
+        // temp root and is reclaimed by the OS, so a cleanup failure must not
+        // turn a completed observation into an error.
+      }
     },
   };
 }

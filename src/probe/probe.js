@@ -258,9 +258,12 @@ export async function probePackage({
     try {
       await environment.destroy();
     } catch (error) {
-      observation.outcome = 'error';
-      observation.error = { code: 'ISOLATION_CLEANUP_FAILED', message: 'The probe environment could not be cleaned up.' };
-      observation.result = undefined;
+      // Cleanup failure is an infrastructure note, not a plugin verdict. A
+      // completed observation keeps its result; an earlier error keeps its code.
+      observation.cleanup = {
+        code: 'ISOLATION_CLEANUP_FAILED',
+        message: 'The probe environment could not be cleaned up.',
+      };
     }
     if (ownsStub && stub?.server) stub.server.close();
     void keep;

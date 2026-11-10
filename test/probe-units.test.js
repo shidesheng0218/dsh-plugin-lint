@@ -59,13 +59,20 @@ test('a boot that never writes a profile is TEMPLATE_FAILED', async (t) => {
   assert.equal(observation.error.code, 'TEMPLATE_FAILED');
 });
 
-test('a cleanup failure is an infrastructure error, not a verdict', async (t) => {
+test('a cleanup failure is recorded without changing the verdict', async (t) => {
   const fixture = probeFixture(t);
   fixture.environment.destroy = async () => { throw new Error('cleanup failed'); };
   const observation = await probePackage({ ...fixture });
-  assert.equal(observation.outcome, 'error');
-  assert.equal(observation.error.code, 'ISOLATION_CLEANUP_FAILED');
-  assert.equal(observation.result, undefined);
+  assert.equal(observation.outcome, 'completed');
+  assert.equal(observation.result.status, 'active');
+  assert.equal(observation.cleanup.code, 'ISOLATION_CLEANUP_FAILED');
+
+  const broken = probeFixture(t, { install: 'missing' });
+  broken.environment.destroy = async () => { throw new Error('cleanup failed'); };
+  const failed = await probePackage({ ...broken });
+  assert.equal(failed.outcome, 'error');
+  assert.equal(failed.error.code, 'ARTIFACT_MISSING', 'the original error is preserved');
+  assert.equal(failed.cleanup.code, 'ISOLATION_CLEANUP_FAILED');
 });
 
 test('tools mode diffs the baseline and post-install tool lists', async (t) => {
