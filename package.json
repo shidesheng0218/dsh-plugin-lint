@@ -1,6 +1,6 @@
 {
   "name": "@shidesheng0218/dsh-plugin-lint",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.",
   "keywords": [
     "dsh",
@@ -39,7 +39,9 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "e2e:official": "node scripts/e2e-official.mjs",
+    "test:coverage": "node --experimental-test-coverage --test --test-coverage-lines=85 --test-coverage-branches=80 --test-coverage-functions=80 test/*.test.js",
+    "package:smoke": "node scripts/package-smoke.mjs",
+    "e2e:official": "node scripts/e2e-official.mjs --expect 80",
     "harvest:events": "node scripts/harvest-event-types.mjs",
     "fetch:official": "node scripts/fetch-official-from-npm.mjs",
     "matrix": "node scripts/matrix/run.mjs",

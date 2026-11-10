@@ -49,8 +49,14 @@ export function parseInactive(text) {
 export function awaitedServices(entries) {
   const services = [];
   for (const entry of entries) {
-    const match = /waiting for service:\s*([^)\s]+)/.exec(entry.reason || '');
-    if (match) services.push(match[1]);
+    // The host prints "waiting for service: x" for one and "waiting for
+    // services: x, y" for several; both must reach the cell.
+    const match = /waiting for services?:\s*([^)]+)/.exec(entry.reason || '');
+    if (!match) continue;
+    for (const name of match[1].split(',')) {
+      const service = name.trim();
+      if (service) services.push(service);
+    }
   }
   return [...new Set(services)];
 }
@@ -252,9 +258,12 @@ export async function probePackage({
     try {
       await environment.destroy();
     } catch (error) {
-      observation.outcome = 'error';
-      observation.error = { code: 'ISOLATION_CLEANUP_FAILED', message: 'The probe environment could not be cleaned up.' };
-      observation.result = undefined;
+      // Cleanup failure is an infrastructure note, not a plugin verdict. A
+      // completed observation keeps its result; an earlier error keeps its code.
+      observation.cleanup = {
+        code: 'ISOLATION_CLEANUP_FAILED',
+        message: 'The probe environment could not be cleaned up.',
+      };
     }
     if (ownsStub && stub?.server) stub.server.close();
     void keep;

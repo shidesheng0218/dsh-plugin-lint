@@ -60,8 +60,8 @@ jobs:
 | [ci.yml](../.github/workflows/ci.yml) | push / PR | 单测 + 从 npm 拉官方包做零误报基线 + 自检 panel |
 | [matrix-refresh.yml](../.github/workflows/matrix-refresh.yml) | 每周一探针；发布需手动勾选 | 重跑 Top 50，把 candidate 作为 artifact 上传；点名数据只有在显式 `publish_named_data=true` 时才提交 |
 | [verify-sample.yml](../.github/workflows/verify-sample.yml) | 手动 | 抽检自报 cell；必须提供已存在的 cells 目录 |
-| [publish-lint.yml](../.github/workflows/publish-lint.yml) | main 上 lint 相关路径变更 | 版本已在 registry 则空转；新版本需先过单测、80 包基线、打包冒烟 |
-| [publish-panel.yml](../.github/workflows/publish-panel.yml) | main 上 `panel/**` 变更 | 同上，另加打包安装 + import 冒烟 |
+| [publish-lint.yml](../.github/workflows/publish-lint.yml) | main 上 `package.json` 变更 | 版本已在 registry 则空转；新版本需先过单测、80 包基线、打包冒烟 |
+| [publish-panel.yml](../.github/workflows/publish-panel.yml) | main 上 `panel/package.json` 变更 | 同上，另加打包安装 + import 冒烟 |
 
 前三个 CI workflow 用 `gh` 开 PR，不依赖第三方 action。两个 publish workflow 的**发布结果**见 [docs/17](17-release.md)：panel 0.1.6 的 bump 进了 main 但 registry 没有 0.1.6，自动发布没有被证明可靠。2026-11-06 起两个 publish workflow 不再自动 bump：版本已在 registry 时 job 直接空转，发布必须来自一次显式的版本号变更，并先通过官方基线（lint）或打包 import 冒烟（panel）。
 

@@ -8,8 +8,9 @@ name: publish-panel
 on:
   push:
     branches: [main]
+    # Only a panel version bump publishes; code-only panel merges run ci.yml.
     paths:
-      - 'panel/**'
+      - 'panel/package.json'
   workflow_dispatch:
 
 permissions:
