@@ -1,6 +1,6 @@
-# 21 · v0.4.0 release notes（draft，发布候选）
+# 21 · v0.4.0 release notes（已发布 2026-11-13）
 
-> **状态：draft / release candidate。** 仓库版本是 lint `0.4.0`、panel `0.2.0`，两者**都未发布**。npm 上 `@shidesheng0218/dsh-plugin-lint` 最新仍是 `0.1.0`（2026-10-14），`@shidesheng0218/dsh-plugin-lint-panel` 最新仍是 `0.1.5`（2026-10-21）。本文件在 registry 对账完成前保持 draft；对账状态见 [docs/17](17-release.md)。
+> **状态：已发布。** lint `0.4.0` 与 panel `0.2.0` 于 2026-11-13 通过终端 2FA 发布到 npm；对账状态见 [docs/17](17-release.md)。200-cell 矩阵验收、浏览器截图验收与 `matrix/public/` 仍未完成，见 §8。
 
 0.3.x 版本线被跳过：v0.3 的分析能力与 v0.4 的矩阵/面板重写一起进入 0.4.0。`docs/20-release-0.3.0.md` 保留为历史草稿，不再是发布记录。
 
@@ -8,8 +8,8 @@
 
 | 包 | 本仓库 | registry | 发布类型 |
 | --- | --- | --- | --- |
-| `@shidesheng0218/dsh-plugin-lint` | `0.4.0` | `0.1.0` | minor；lint JSON `schemaVersion: 1`、既有 CLI 参数与退出码不变 |
-| `@shidesheng0218/dsh-plugin-lint-panel` | `0.2.0` | `0.1.5` | **major**；payload v2，面板运行时同步与动作路由的行为变化 |
+| `@shidesheng0218/dsh-plugin-lint` | `0.4.0` | `0.4.0`（2026-11-13） | minor；lint JSON `schemaVersion: 1`、既有 CLI 参数与退出码不变 |
+| `@shidesheng0218/dsh-plugin-lint-panel` | `0.2.0` | `0.2.0`（2026-11-13） | **major**；payload v2，面板运行时同步与动作路由的行为变化 |
 
 核心入口保留十个稳定导出：`lintPackage`、`loadPackage`、`filesCover`、`maskSource`、`RULES`、`EVENT_TYPES`、`DOC`、`formatText`、`toSarif`、`toBadge`。实验分析 API 通过包内 `./experimental` 子路径提供，不在根入口。
 
@@ -67,14 +67,14 @@
 
 ## 8. 已知边界与发布阻塞
 
-1. **registry 尚未发布 0.4.0 / 0.2.0。** NPM_TOKEN 未配置；`publish-lint` / `publish-panel` 在 token 检查处失败关闭。
+1. **registry 已发布 0.4.0 / 0.2.0（2026-11-13，终端 2FA）。** `NPM_TOKEN` 仍未配置，两个 publish workflow 在 token 检查处失败关闭；版本已在 registry 时 job 空转。
 2. **200-cell Docker 矩阵验收未执行。** 计划 Task 12 要求新的 v2 语料（50 × 2 × 2）与 manifest/index/aggregate 校验；本次只做了单 cell 的真实 Docker 探针。没有这次验收，不把矩阵数据标记为“已验证”。
 3. **没有新的浏览器截图验收。** `scripts/screenshot-panel.mjs` 仍是旧快照；发布前应在一次性 web profile 里重新截图并核对 aggregate/冲突/更新区域。
 4. **`matrix/public/` 未发布。** panel 的运行时同步源仍返回 404；npm 安装只显示聚合计数，这是数据政策的默认结果，不是故障。
 5. **同源插件信任模型未变。** panel 的 action header / `confirmed` 对同源插件 JS 可伪造；真正的边界需要宿主级权限或产品决策。
 6. **已知 P1 未清**：矩阵 cacheKey 未纳入 tools/isolation；error cell 仍会阻断导出链。
 
-## 9. 发布清单（人工）
+## 9. 发布记录与复核命令
 
 ```bash
 # 1. 确认版本与 registry
@@ -92,11 +92,11 @@ node scripts/package-smoke.mjs
 # 3. 真实 Docker 探针（可选但推荐）
 node scripts/probe-boot.mjs test/probe-plugins/tool-alpha --dsh 0.2.0-rc.2 --cache /tmp/dsh-probe-cache
 
-# 4. 由仓库管理员配置 NPM_TOKEN（Automation token），合并版本提交后观察 publish workflow
+# 4. 本次发布由终端 npm login --auth-type=web + 2FA 批准完成；NPM_TOKEN 仍未配置
 
 # 5. 发布后对账并做 registry 安装冒烟
 npm view @shidesheng0218/dsh-plugin-lint@0.4.0 version dist.integrity dist.tarball
 npm view @shidesheng0218/dsh-plugin-lint-panel@0.2.0 version dist.integrity dist.tarball
 ```
 
-只有 registry 返回确切版本、workflow 成功且从 registry 再安装冒烟通过后，才把本文件从 draft 改为已发布，并更新 [docs/17](17-release.md) 的对账表。
+registry 已返回确切版本；从 registry 再安装冒烟通过后，本文件状态改为“已发布”，并更新 [docs/17](17-release.md) 的对账表。200-cell 矩阵、浏览器截图与 `matrix/public/` 仍是发布后的待办项。

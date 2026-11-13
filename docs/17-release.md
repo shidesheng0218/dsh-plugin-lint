@@ -157,14 +157,14 @@ git log --oneline -5 -- panel/package.json
 - 两个 workflow 只在 `refs/heads/main` 上运行；`workflow_dispatch` 不再能从功能分支发布。
 - 尚未对账：lint `0.3.0` 与 panel `0.1.6` 仍高于 registry（0.1.0 / 0.1.5）。本次变更不会发布它们；版本号需要按 0.4.0 / 0.2.0 的计划先对齐，再走一次显式发布。
 
-## 11. 0.4.0 / panel 0.2.0 发布候选（2026-11-10）
+## 11. 0.4.0 / panel 0.2.0 发布记录（2026-11-13）
 
 | 包 | registry | 仓库 |
 | --- | --- | --- |
-| `@shidesheng0218/dsh-plugin-lint` | **0.1.0** | **0.4.0**（release candidate） |
-| `@shidesheng0218/dsh-plugin-lint-panel` | **0.1.5** | **0.2.0**（release candidate） |
+| `@shidesheng0218/dsh-plugin-lint` | **0.4.0** | **0.4.0** |
+| `@shidesheng0218/dsh-plugin-lint-panel` | **0.2.0** | **0.2.0** |
 
-- 版本已对齐到 0.4 计划目标（lint 0.4.0 / panel 0.2.0），`PROBE_VERSION` 与 `package.json` 一致；发布门禁会在两者不一致时拒绝发布。
-- 验证结果与发布清单见 [docs/21](21-release-0.4.0.md)。当前发布阻塞：`NPM_TOKEN` 未配置、200-cell Docker 矩阵验收未执行、发布前的浏览器截图验收未更新。
-- 两个 publish workflow 只在 `main` 上运行，只在版本号是新的时发布；当前版本已在 registry 时 job 空转并给出人工核对提示，不再自动 patch bump。
+- 通过终端 `npm login --auth-type=web` + 2FA 批准发布；`NPM_TOKEN` 仍未配置，两个 publish workflow 仍会在 token 检查处失败关闭（版本已在 registry 时 job 空转）。
+- 发布前门禁全部通过：430 个用例、覆盖率行 95.3% / 分支 86.2% / 函数 96.1%、官方 80 包零误报基线、package smoke。
+- 200-cell Docker 矩阵验收、新的浏览器截图验收与 `matrix/public/` 仍未完成，见 [docs/21 §8](21-release-0.4.0.md)。
 - 发布后按 docs/21 §9 对账，再把 release notes 从 draft 改为已发布。
