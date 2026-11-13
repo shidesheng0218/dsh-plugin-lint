@@ -1,6 +1,6 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { sha256, stableStringify } from '../shared/hash.js';
-import { RULES } from './rules.js';
+import { EVENT_CATALOG, RULES } from './rules.js';
 
 export const BASELINE_SCHEMA_VERSION = 1;
 
@@ -22,7 +22,7 @@ export function rulesetIdentity() {
   return {
     hash: sha256(stableStringify(RULES.map((rule) => ({ id: rule.id, level: rule.level })))),
     rules: RULES.map((rule) => rule.id),
-    eventCatalog: 'src/data/event-types.json',
+    eventCatalog: { harvestedAt: EVENT_CATALOG.harvestedAt, dshVersions: EVENT_CATALOG.dshVersions },
   };
 }
 

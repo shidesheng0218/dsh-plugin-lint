@@ -8,7 +8,7 @@
  *   node scripts/package-smoke.mjs
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -58,6 +58,10 @@ try {
   run(process.execPath, ['--input-type=module', '-e',
     `const m = await import('${PANEL_NAME}'); if (typeof m.apply !== 'function') process.exit(1);`,
   ], { cwd: install });
+
+  const manifestSchema = JSON.parse(readFileSync(
+    join(install, 'node_modules', ROOT_NAME, 'schema', 'dsh-manifest.schema.json'), 'utf8'));
+  assert(manifestSchema.definitions && manifestSchema.definitions.dsh, 'the installed manifest schema has no dsh definition');
 
   for (const bin of BINS) {
     const target = join(install, 'node_modules', '.bin', bin);

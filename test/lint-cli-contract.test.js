@@ -56,7 +56,7 @@ test('--version, --rules and --explain expose the machine contract', (t) => {
   const rules = run(root, ['--rules']);
   assert.equal(rules.status, 0);
   assert.match(rules.stdout, /E6\s+error/);
-  assert.equal(rules.stdout.trim().split('\n').length, 12);
+  assert.equal(rules.stdout.trim().split('\n').length, 13);
   const explain = run(root, ['--explain', 'E6']);
   assert.equal(explain.status, 0);
   assert.match(explain.stdout, /peerDependencies|peer range/);
@@ -130,5 +130,12 @@ test('--init writes a workflow and a starter baseline', (t) => {
   assert.equal(result.status, 0, result.stderr);
   assert.equal(existsSync(join(root, '.github/workflows/dsh-plugin-lint.yml')), true);
   assert.equal(existsSync(join(root, '.dsh-plugin-lint-baseline.json')), true);
+  const workflow = readFileSync(join(root, '.github/workflows/dsh-plugin-lint.yml'), 'utf8');
+  assert.match(workflow, /pull-requests: write/);
+  assert.match(workflow, /comment: true/);
+  assert.match(workflow, /shidesheng0218\/dsh-plugin-lint@main/);
+  const skill = readFileSync(join(root, '.claude/skills/dsh-plugin-lint/SKILL.md'), 'utf8');
+  assert.match(skill, /^---\nname: dsh-plugin-lint\n/);
+  assert.match(skill, /--phase author/);
   assert.equal(run(root, ['--init', root]).status, 2, 'refuses to overwrite without --force');
 });

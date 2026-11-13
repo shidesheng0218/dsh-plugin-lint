@@ -525,3 +525,53 @@ test('author phase collects TypeScript and does not accuse an unbuilt tree', () 
   assert.ok(report.findings.some((finding) => finding.rule === 'E3' && finding.level === 'info'));
   assert.ok(report.findings.some((finding) => finding.rule === 'E1' && finding.file === 'src/index.ts'), 'TS files are analysed in author phase');
 });
+
+test('E1 downgrades an unknown type when the target host is newer than the catalog', () => {
+  const files = {
+    'package.json': base(),
+    'index.js': 'export function apply(ctx) { ctx.session.append("demo/custom", {}); }',
+  };
+  assert.equal(fixture(files, { dshVersion: '0.2.1-rc.5' }).findings.find((f) => f.rule === 'E1').level, 'error');
+  const newer = fixture(files, { dshVersion: '0.2.2-rc.1' }).findings.find((f) => f.rule === 'E1');
+  assert.equal(newer.level, 'warn');
+  assert.match(newer.message, /catalog covers up to DSH 0\.2\.1-rc\.5/);
+});
+
+test('the report carries the ruleset identity', () => {
+  const report = fixture({ 'package.json': base(), 'index.js': 'export {}' });
+  assert.equal(report.ruleset.rules.includes('E6'), true);
+  assert.deepEqual(report.ruleset.eventCatalog.dshVersions, ['0.2.1-rc.5']);
+});
+
+test('E7 checks subpath exports and bin targets that do not exist', () => {
+  const report = fixture({
+    'package.json': base({
+      exports: { '.': './index.js', './extra': './missing.js' },
+      bin: { demo: './bin/demo.js' },
+    }),
+    'index.js': 'export function apply() {}',
+  });
+  const messages = report.findings.filter((finding) => finding.rule === 'E7' && finding.level === 'error').map((finding) => finding.message);
+  assert.ok(messages.some((message) => /exports\["\.\/extra"\]/.test(message)));
+  assert.ok(messages.some((message) => /bin\["demo"\]/.test(message)));
+});
+
+test('E7 checks icon format and size, and stale files entries', () => {
+  const report = fixture({
+    'package.json': base({ icon: './icon.gif', files: ['index.js', 'missing-dir'] }),
+    'index.js': 'export function apply() {}',
+    'icon.gif': 'GIF89a',
+    'assets/icon.svg': '<svg/>',
+  });
+  const warnings = report.findings.filter((finding) => finding.rule === 'E7' && finding.level === 'warn').map((finding) => finding.message);
+  assert.ok(warnings.some((message) => /unsupported format/.test(message)));
+  assert.ok(warnings.some((message) => /matches no packed file/.test(message)));
+});
+
+test('E7 is skipped in the author phase', () => {
+  const report = fixture({
+    'package.json': base({ exports: { '.': './index.js', './extra': './missing.js' }, scripts: { build: 'tsc' } }),
+    'index.js': 'export function apply() {}',
+  }, { phase: 'author' });
+  assert.equal(report.findings.some((finding) => finding.rule === 'E7'), false);
+});

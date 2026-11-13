@@ -74,7 +74,7 @@ Every lint finding carries a file, a line, an evidence excerpt, and the upstream
 
 ```console
 $ node bin/dsh-plugin-lint.mjs .
-demo-plugin@1.0.0  12 checks
+demo-plugin@1.0.0  13 checks
 
   E2 error  client bundle factory id matches nothing the loader can ask for
          lib/client.js:2
@@ -112,6 +112,7 @@ Rule IDs are stable identifiers, not severity labels: `W3` reports at info level
 | E4 | `dsh.client` declared with no resolvable `./client` export |
 | E5 | `files[]` omits an artifact the manifest depends on — the "works locally, broken after publish" bug |
 | E6 | a `@deepseek-ai/dsh*` peer range does not accept the target runtime (`--dsh-version`); the host's real admission gate |
+| E7 | a published subpath export or bin target points at a missing file; icon format/size and stale `files` entries are warns |
 
 **warn** — documented risk patterns, evidence required
 
@@ -206,19 +207,58 @@ node bin/dsh-plugin-lint.mjs . --format junit -o report.xml
 node bin/dsh-plugin-lint.mjs . --format json-envelope  # { schemaVersion, reports, baseline }
 node bin/dsh-plugin-lint.mjs . --baseline .dsh-plugin-lint-baseline.json
 node bin/dsh-plugin-lint.mjs . --write-baseline       # record the current findings
-node bin/dsh-plugin-lint.mjs --init                  # write a GitHub workflow and an empty baseline
+node bin/dsh-plugin-lint.mjs --init                  # write a workflow, baseline, and agent skill
 node bin/dsh-plugin-lint.mjs . --dsh-version 0.2.2-rc.1  # E6 checks the host's peer admission
+node bin/dsh-plugin-lint.mjs . --changed HEAD          # only packages touched since HEAD (or --staged)
+node bin/dsh-plugin-lint.mjs . --pack                  # lint the tarball npm pack would publish
+node bin/dsh-plugin-lint.mjs dist/plugin-1.2.3.tgz     # or lint an existing tarball
+node bin/dsh-plugin-lint.mjs --from-npm @scope/name@1.2.3  # lint a published artifact
+node bin/dsh-plugin-lint.mjs --profile ~/.dsh/profiles/default  # host-truth scan of an installed profile
 node bin/dsh-plugin-lint.mjs --rules --explain E6
 ```
+
+`--changed` and `--staged` map a git diff back to the nearest `package.json`, so a monorepo lints only the packages a PR touches. `--pack`, `.tgz` and `--from-npm` force the publish phase and lint the real artifact: missing subpath exports, bins or icons are reported against what npm will actually ship, and tarballs containing path traversal or symlinks are rejected before extraction. `--profile` reads the runtime version and installed bundles from a DSH profile, reports which plugins the host will load or reject, and prints the exact `dsh plugin allow-version … --accept-risk` command for each rejection; with `--exit-code` it fails on any `will-reject`.
 
 The composite action is the same surface in CI:
 
 ```yaml
-- uses: shidesheng0218/dsh-plugin-lint@main   # or the release tag once v0.4.0 is tagged
-  with:
-    path: .
-    fail-on: error
-    baseline: .dsh-plugin-lint-baseline.json
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write   # needed only when comment: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shidesheng0218/dsh-plugin-lint@main   # or the release tag once v0.4.0 is tagged
+        with:
+          path: .
+          fail-on: error
+          baseline: .dsh-plugin-lint-baseline.json
+          comment: true       # one sticky PR comment, created once and updated in place
+```
+
+Set `sarif: dsh-plugin-lint.sarif` to write SARIF, then upload it in a separate step (the job also needs `security-events: write`):
+
+```yaml
+      - uses: shidesheng0218/dsh-plugin-lint@main
+        with:
+          path: .
+          sarif: dsh-plugin-lint.sarif
+      - uses: github/codeql-action/upload-sarif@v3   # use the current major from GitHub's docs
+        with:
+          sarif_file: dsh-plugin-lint.sarif
+```
+
+The package ships `schema/dsh-manifest.schema.json` (subpath `@shidesheng0218/dsh-plugin-lint/schema/dsh-manifest.schema.json`). Point `$schema` at it so the editor validates the `dsh` block before CI runs:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/shidesheng0218/dsh-plugin-lint/main/schema/dsh-manifest.schema.json",
+  "name": "@you/my-plugin",
+  "version": "1.0.0",
+  "dsh": { "bundle": { "patch": "./cordis.patch.yml" } }
+}
 ```
 
 The baseline fingerprint is `sha256(rule + file + normalized evidence)` and deliberately excludes the line number, so reformatting or rebuilding does not revive a suppressed finding. Every report still prints how many findings the baseline suppressed.
@@ -449,13 +489,13 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # node --test test/*.test.js: 381 cases across 43 files
+npm test                 # node --test test/*.test.js: 430 cases across 49 files
 npm run test:coverage    # lines >=85%, branches >=80%, functions >=80%
 npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
 npm run package:smoke    # pack both tarballs, install them, run every bin and entry point
 ```
 
-At this revision the suite has **381 node:test cases across 43 files**, and coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+At this revision the suite has **430 node:test cases across 49 files**, coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%, and the measured run is **95.3% lines / 86.2% branches / 96.1% functions**. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
 
 `npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
@@ -589,7 +629,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 没有逐插件数据时，页面仍展示矩阵全景：50 个插件 × 2 个版本，0.2.0-rc.2 上 100 格里 80 格 active，0.2.1-alpha.2 上 72 格 active。
 
-它用这个项目的 linter 检查自己是 0 发现（12 checks）：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
+它用这个项目的 linter 检查自己是 0 发现（13 checks）：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
 
 ### v0.3 分析能力（experimental，未发布）
 
@@ -659,23 +699,32 @@ node bin/dsh-plugin-lint.mjs . --format github          # GitHub Actions 注解
 node bin/dsh-plugin-lint.mjs . --format junit -o report.xml
 node bin/dsh-plugin-lint.mjs . --baseline baseline.json # 只拦新增问题
 node bin/dsh-plugin-lint.mjs . --write-baseline
-node bin/dsh-plugin-lint.mjs --init                     # 生成 GitHub workflow 和空 baseline
+node bin/dsh-plugin-lint.mjs --init                     # 生成 workflow、空 baseline 和 agent skill
 node bin/dsh-plugin-lint.mjs . --dsh-version 0.2.2-rc.1 # E6 按宿主真实 peer 门禁预检
+node bin/dsh-plugin-lint.mjs . --changed HEAD           # 只体检 HEAD 以来改动的包（--staged 同理）
+node bin/dsh-plugin-lint.mjs . --pack                   # 体检 npm pack 真正会发布的 tarball
+node bin/dsh-plugin-lint.mjs dist/plugin-1.2.3.tgz      # 或直接体检已有 tarball
+node bin/dsh-plugin-lint.mjs --from-npm @scope/name@1.2.3  # 体检 registry 上的产物
+node bin/dsh-plugin-lint.mjs --profile ~/.dsh/profiles/default  # 对已安装 profile 做宿主真值扫描
 ```
 
+`--changed` / `--staged` 把 git diff 映射到最近的 `package.json`，monorepo 里只体检 PR 碰过的包。`--pack`、`.tgz` 与 `--from-npm` 强制进入 publish 阶段并体检真实产物：缺失的子路径 export、bin、icon 都按 npm 实际会发布的内容报告，含路径穿越或符号链接的 tarball 会在解包前被拒绝。`--profile` 从 DSH profile 读取运行时版本与已安装 bundle，列出宿主会加载/拒绝哪些插件，并为每个拒绝打印可直接执行的 `dsh plugin allow-version … --accept-risk` 命令；配合 `--exit-code` 时，任何 `will-reject` 都会让命令失败。
+
 baseline 的指纹是 `sha256(rule + file + 归一化 evidence)`，不含行号：格式化或重新构建不会让已抑制的问题复活；报告仍会显示被 baseline 抑制的数量。
+
+composite action 把同一套能力带进 CI。`comment: true` 需要 job 的 `pull-requests: write`，只会创建一条评论并原地更新；`sarif: dsh-plugin-lint.sarif` 会写出 SARIF，再由 `codeql-action/upload-sarif` 上传（该 job 另需 `security-events: write`，upload 的 major 版本以 GitHub 文档为准）。npm 包同时带 `schema/dsh-manifest.schema.json`（子路径 `@shidesheng0218/dsh-plugin-lint/schema/dsh-manifest.schema.json`）；把 `$schema` 指向它，编辑器就能在 CI 之前校验 `dsh` 块。
 
 本 README 里以 `node scripts/` 开头的命令需要**克隆本仓库**运行——矩阵跑批、升级预览、探针与报告生成都依赖 npm 包里不包含的文件。
 
 ### 测试
 
 ```bash
-npm test   # node --test test/*.test.js：381 个用例，43 个文件
+npm test   # node --test test/*.test.js：430 个用例，49 个文件
 npm run test:coverage   # 行 ≥85%、分支 ≥80%、函数 ≥80%
 npm run package:smoke   # 打包两个 tarball、安装、运行全部 bin 与入口
 ```
 
-当前 revision 的实测：381 个 `node:test` 用例、43 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
+当前 revision 的实测：430 个 `node:test` 用例、49 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，实测行 95.3% / 分支 86.2% / 函数 96.1%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 

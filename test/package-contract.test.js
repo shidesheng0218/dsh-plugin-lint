@@ -10,6 +10,7 @@ const ci = readFileSync(fileURLToPath(new URL('../.github/workflows/ci.yml', imp
 const publishLint = readFileSync(fileURLToPath(new URL('../.github/workflows/publish-lint.yml', import.meta.url)), 'utf8');
 const publishPanel = readFileSync(fileURLToPath(new URL('../.github/workflows/publish-panel.yml', import.meta.url)), 'utf8');
 const action = readFileSync(fileURLToPath(new URL('../action.yml', import.meta.url)), 'utf8');
+const manifestSchema = JSON.parse(readFileSync(fileURLToPath(new URL('../schema/dsh-manifest.schema.json', import.meta.url)), 'utf8'));
 
 const CORE_EXPORTS = [
   'DOC', 'EVENT_TYPES', 'RULES', 'filesCover', 'formatText',
@@ -39,7 +40,7 @@ test('the experimental subpath exposes the analysis API', async () => {
 test('the published root package keeps its dependency-free, flat shape', () => {
   assert.equal(root.dependencies, undefined);
   assert.equal(root.workspaces, undefined);
-  for (const entry of ['bin/', 'src/', 'scripts/probe-boot.mjs', 'scripts/lib/', 'README.md', 'LICENSE', 'NOTICE']) {
+  for (const entry of ['bin/', 'src/', 'schema/', 'scripts/probe-boot.mjs', 'scripts/lib/', 'README.md', 'LICENSE', 'NOTICE']) {
     assert.equal(root.files.includes(entry), true, 'files omission: ' + entry);
   }
   assert.equal(root.exports['./experimental'], './src/experimental/index.js');
@@ -67,6 +68,8 @@ test('the coverage gate enforces the release thresholds', () => {
   assert.match(script, /--test-coverage-lines=85/);
   assert.match(script, /--test-coverage-branches=80/);
   assert.match(script, /--test-coverage-functions=80/);
+  assert.match(script, /--test-coverage-exclude="\*\*\/node_modules\/\*\*"/);
+  assert.match(script, /--test-coverage-exclude="\*\*\/\.cache\/\*\*"/);
 });
 
 test('publishing requires a new version and never auto-bumps', () => {
@@ -83,9 +86,50 @@ test('publishing requires a new version and never auto-bumps', () => {
   assert.match(publishPanel, /node --input-type=module -e/);
 });
 
+test('the manifest schema is shipped and every local $ref resolves', () => {
+  assert.equal(root.exports['./schema/dsh-manifest.schema.json'], './schema/dsh-manifest.schema.json');
+  assert.match(manifestSchema.$schema, /draft-07/);
+  assert.deepEqual(manifestSchema.required, ['name', 'version']);
+  assert.deepEqual(manifestSchema.definitions.dsh.required, undefined);
+  const dsh = manifestSchema.definitions.dsh.properties;
+  assert.ok(dsh.bundle.properties.patch);
+  assert.ok(dsh.client);
+  assert.ok(dsh.profile.properties.bundles);
+  assert.ok(dsh.compatibility.properties.dshReleases);
+  assert.equal(manifestSchema.definitions.dsh.additionalProperties, true, 'unknown dsh fields stay forward-compatible');
+  const refs = [];
+  const walk = (node) => {
+    if (Array.isArray(node)) node.forEach(walk);
+    else if (node && typeof node === 'object') {
+      if (typeof node.$ref === 'string' && node.$ref.startsWith('#/')) refs.push(node.$ref);
+      Object.values(node).forEach(walk);
+    }
+  };
+  walk(manifestSchema);
+  assert.ok(refs.length > 0);
+  for (const ref of refs) {
+    const value = ref.slice(2).split('/').reduce((node, key) => node && node[key], manifestSchema);
+    assert.ok(value, 'unresolved $ref: ' + ref);
+  }
+});
+
 test('the composite action is wired to the packed CLI and escapes dashed inputs', () => {
   assert.match(action, /bin\/dsh-plugin-lint\.mjs/);
   assert.match(action, /inputs\['fail-on'\]/);
   assert.match(action, /--format github/);
   assert.match(action, /GITHUB_STEP_SUMMARY/);
+});
+
+test('the composite action offers an opt-in, idempotent sticky comment', () => {
+  assert.match(action, /^  comment:/m);
+  assert.match(action, /<!-- dsh-plugin-lint -->/);
+  assert.match(action, /--method PATCH/);
+  assert.match(action, /--method POST/);
+  assert.match(action, /inputs\.comment == 'true'/);
+});
+
+test('the composite action can write a SARIF file', () => {
+  assert.match(action, /^  sarif:/m);
+  assert.match(action, /--format sarif/);
+  assert.match(action, /-o "\$INPUT_SARIF"/);
 });

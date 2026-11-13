@@ -1,5 +1,5 @@
 name: dsh-plugin-lint
-description: Conformance checks for a DeepSeek Harness plugin, with GitHub annotations or a job summary.
+description: Conformance checks for a DeepSeek Harness plugin, with GitHub annotations, a job summary, or a sticky pull request comment.
 author: shidesheng0218
 branding:
   icon: check-circle
@@ -21,6 +21,14 @@ inputs:
     description: Append a short text summary to the job summary.
     required: false
     default: 'true'
+  comment:
+    description: Post or update one sticky pull request comment. Needs pull-requests write.
+    required: false
+    default: 'false'
+  sarif:
+    description: Write a SARIF file to this path (upload it with codeql-action/upload-sarif).
+    required: false
+    default: ''
 runs:
   using: composite
   steps:
@@ -30,7 +38,6 @@ runs:
         INPUT_PATH: ${{ inputs.path }}
         INPUT_BASELINE: ${{ inputs.baseline }}
         INPUT_FAIL_ON: ${{ inputs['fail-on'] }}
-        INPUT_SUMMARY: ${{ inputs.summary }}
       run: |
         set -uo pipefail
         args=("$INPUT_PATH" --format github --fail-on "$INPUT_FAIL_ON")
@@ -39,16 +46,79 @@ runs:
         fi
         status=0
         node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${args[@]}" || status=$?
+        exit "$status"
+    - name: Summary
+      if: ${{ !cancelled() && (inputs.summary == 'true' || inputs.comment == 'true') }}
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+        SUMMARY_FILE: ${{ runner.temp }}/dsh-plugin-lint-summary.txt
+      run: |
+        set -uo pipefail
+        args=("$INPUT_PATH" --quiet --no-color)
+        if [ -n "$INPUT_BASELINE" ] && [ -f "$INPUT_BASELINE" ]; then
+          args+=(--baseline "$INPUT_BASELINE")
+        fi
+        node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${args[@]}" > "$SUMMARY_FILE" 2>&1 || true
         if [ "$INPUT_SUMMARY" = "true" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
-          summary_args=("$INPUT_PATH" --quiet --no-color)
-          if [ -n "$INPUT_BASELINE" ] && [ -f "$INPUT_BASELINE" ]; then
-            summary_args+=(--baseline "$INPUT_BASELINE")
-          fi
           {
             echo '### dsh-plugin-lint'
             echo '```'
-            node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${summary_args[@]}" || true
+            cat "$SUMMARY_FILE"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
         fi
-        exit "$status"
+    - name: SARIF
+      if: ${{ !cancelled() && inputs.sarif != '' }}
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_SARIF: ${{ inputs.sarif }}
+      run: |
+        set -uo pipefail
+        args=("$INPUT_PATH" --format sarif -o "$INPUT_SARIF")
+        if [ -n "$INPUT_BASELINE" ] && [ -f "$INPUT_BASELINE" ]; then
+          args+=(--baseline "$INPUT_BASELINE")
+        fi
+        node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${args[@]}" \
+          || echo "::warning::dsh-plugin-lint: could not write the SARIF file."
+    - name: Sticky pull request comment
+      if: ${{ !cancelled() && inputs.comment == 'true' }}
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        SUMMARY_FILE: ${{ runner.temp }}/dsh-plugin-lint-summary.txt
+        BODY_FILE: ${{ runner.temp }}/dsh-plugin-lint-comment.md
+      run: |
+        set -uo pipefail
+        if [ -z "$PR_NUMBER" ]; then
+          echo "::notice::dsh-plugin-lint: not a pull_request run; skipping the sticky comment."
+          exit 0
+        fi
+        {
+          echo '<!-- dsh-plugin-lint -->'
+          echo '### dsh-plugin-lint'
+          echo ''
+          echo '```'
+          if [ -s "$SUMMARY_FILE" ]; then
+            head -c 60000 "$SUMMARY_FILE"
+          else
+            echo 'no report produced'
+          fi
+          echo ''
+          echo '```'
+        } > "$BODY_FILE"
+        existing=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" --paginate \
+          --jq '.[] | select(.body | contains("<!-- dsh-plugin-lint -->")) | .id' 2>/dev/null | head -n 1 || true)
+        if [ -n "$existing" ]; then
+          gh api --method PATCH "repos/$REPO/issues/comments/$existing" -F body=@"$BODY_FILE" >/dev/null \
+            || echo "::warning::dsh-plugin-lint: could not update the pull request comment; grant pull-requests: write."
+        else
+          gh api --method POST "repos/$REPO/issues/$PR_NUMBER/comments" -F body=@"$BODY_FILE" >/dev/null \
+            || echo "::warning::dsh-plugin-lint: could not create the pull request comment; grant pull-requests: write."
+        fi

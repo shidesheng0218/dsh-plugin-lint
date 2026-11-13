@@ -386,5 +386,8 @@
     "workspace/session-activity",
     "workspace/session-stop",
     "x/name"
+  ],
+  "dshVersions": [
+    "0.2.1-rc.5"
   ]
 }

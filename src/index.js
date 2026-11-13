@@ -1,6 +1,7 @@
 import { loadPackage } from './core/load.js';
 import { buildPacklist } from './core/packlist.js';
 import { RULES, EVENT_TYPES, localeMeta, DOC } from './core/rules.js';
+import { rulesetIdentity } from './core/baseline.js';
 import { ToolError } from './shared/errors.js';
 
 export { RULES, EVENT_TYPES, DOC };
@@ -58,12 +59,14 @@ export function lintPackage(dir, options = {}) {
       name: pkg.manifest.name,
       version: pkg.manifest.version,
       path: dir,
+      ...(options.source ? { source: options.source } : {}),
     },
     dsh: {
       declared: declared ? Object.keys(declared) : [],
       verified: [],
     },
     checks: RULES.length,
+    ruleset: rulesetIdentity(),
     summary,
     findings,
     limits: LIMITS,

@@ -1,12 +1,14 @@
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendCallSites, blockAfter, braceDepthAt, lineOfIndex, stringAfter } from './mask.js';
 import { clientExportTarget, isBuildOutput } from './load.js';
 import { evaluatePeers } from './peer.js';
-import { hasPackedFile } from './packlist.js';
+import { compareVersions, parseVersion } from './semver.js';
+import { globToRegExp, hasPackedFile } from './packlist.js';
 
 const CATALOG = JSON.parse(readFileSync(new URL('../data/event-types.json', import.meta.url), 'utf8'));
 export const EVENT_TYPES = new Set(CATALOG.types);
+export const EVENT_CATALOG = { harvestedAt: CATALOG.harvestedAt, dshVersions: CATALOG.dshVersions || [] };
 
 /** Upstream documents that ship inside a DSH installation. */
 export const DOC = {
@@ -19,6 +21,18 @@ export const DOC = {
 const EVENT_TYPE_RE = /^[a-z][a-z0-9-]*\/[a-z0-9-]+$/;
 const HARNESS_CLIENT_PKG = /@deepseek-ai\/dsh-client[a-z0-9-]*/g;
 
+/** Whether the harvested catalog covers a target DSH version. */
+function catalogCoverage(target) {
+  if (!target) return { covered: true };
+  const versions = (CATALOG.dshVersions || []).map((value) => ({ raw: value, parsed: parseVersion(value) })).filter((entry) => entry.parsed);
+  if (versions.length === 0) return { covered: false, newest: undefined };
+  versions.sort((a, b) => compareVersions(a.parsed, b.parsed));
+  const newest = versions[versions.length - 1];
+  const parsedTarget = parseVersion(target);
+  if (!parsedTarget) return { covered: false, newest: newest.raw };
+  return { covered: compareVersions(parsedTarget, newest.parsed) <= 0, newest: newest.raw };
+}
+
 export const RULES = [
   {
     id: 'E1',
@@ -26,16 +40,20 @@ export const RULES = [
     title: 'appends a session event type that appears nowhere in the official packages',
     doc: DOC.practices,
     check(ctx, options, push) {
+      const coverage = catalogCoverage(options.dshVersion);
       for (const file of ctx.jsFiles) {
         for (const site of appendCallSites(file.masked, file.strings)) {
           if (!EVENT_TYPE_RE.test(site.type)) continue;
           if (EVENT_TYPES.has(site.type)) continue;
           push({
+            ...(coverage.covered ? {} : { level: 'warn' }),
             file: file.path,
             line: site.line,
-            message: 'session.append("' + site.type + '", ...): this type does not appear anywhere in the official Harness packages (' + EVENT_TYPES.size + ' types observed).',
+            message: 'session.append("' + site.type + '", ...): this type does not appear anywhere in the official Harness packages (' + EVENT_TYPES.size + ' types observed).'
+              + (coverage.covered ? '' : ' The catalog covers up to DSH ' + coverage.newest + '; the target ' + options.dshVersion + ' is newer.'),
             evidence: '.append("' + site.type + '", ...)',
-            hint: 'The reference asks plugins not to append session events with a new type: a live Session.append() cannot set ignorable: true, so a log holding an unknown type can refuse to reopen. The allowlist is harvested, not authoritative — if this type is legitimate, it is a gap in the rule, not in your plugin.',
+            hint: 'The reference asks plugins not to append session events with a new type: a live Session.append() cannot set ignorable: true, so a log holding an unknown type can refuse to reopen. The allowlist is harvested, not authoritative — if this type is legitimate, it is a gap in the rule, not in your plugin.'
+              + (coverage.covered ? '' : ' A newer host may have added this type; treat this as a review hint, not an error.'),
           });
         }
       }
@@ -237,6 +255,103 @@ export const RULES = [
           evidence: peer.name + ': ' + peer.range,
           hint: 'The host still evaluates this range. Treat a clean run as "not checked", not as "compatible".',
         });
+      }
+    },
+  },
+
+
+  {
+    id: 'E7',
+    level: 'error',
+    title: 'the published artifact contract is broken',
+    doc: DOC.host,
+    check(ctx, options, push) {
+      if (ctx.phase === 'author') return;
+      const manifest = ctx.manifest;
+
+      const exportStrings = (value) => {
+        if (typeof value === 'string') return [value];
+        if (Array.isArray(value)) return value.flatMap(exportStrings);
+        if (value && typeof value === 'object') return Object.values(value).flatMap(exportStrings);
+        return [];
+      };
+      for (const [subpath, value] of Object.entries(manifest.exports || {})) {
+        if (subpath === '.' || subpath === './client' || subpath.includes('*')) continue;
+        for (const target of exportStrings(value)) {
+          if (target.includes('*')) continue;
+          const rel = String(target).replace(/^\.\//, '');
+          if (ctx.exists(rel)) continue;
+          push({
+            file: 'package.json',
+            line: manifestLine(ctx.manifestText, subpath.replace(/^\.\//, '')),
+            message: 'exports["' + subpath + '"] points at "' + rel + '", which does not exist.',
+            evidence: 'exports["' + subpath + '"] -> ' + rel,
+            hint: 'A subpath export that resolves to nothing fails at import time; publish phase checks the artifact the user installs.',
+          });
+        }
+      }
+
+      const bins = typeof manifest.bin === 'string'
+        ? { [manifest.name || 'bin']: manifest.bin }
+        : manifest.bin && typeof manifest.bin === 'object' ? manifest.bin : {};
+      for (const [name, target] of Object.entries(bins)) {
+        if (typeof target !== 'string') continue;
+        const rel = target.replace(/^\.\//, '');
+        if (ctx.exists(rel)) continue;
+        push({
+          file: 'package.json',
+          line: manifestLine(ctx.manifestText, name),
+          message: 'bin["' + name + '"] points at "' + rel + '", which does not exist.',
+          evidence: 'bin.' + name + ' -> ' + rel,
+          hint: 'The package manager links the bin at install time; a missing target leaves a broken command.',
+        });
+      }
+
+      if (ctx.entries.icon !== undefined && ctx.exists(ctx.entries.icon)) {
+        const extension = (/\.([a-z0-9]+)$/i.exec(ctx.entries.icon) || [])[1];
+        if (extension && !['svg', 'png', 'jpg', 'jpeg', 'webp'].includes(extension.toLowerCase())) {
+          push({
+            level: 'warn',
+            file: 'package.json',
+            line: manifestLine(ctx.manifestText, 'icon'),
+            message: 'icon "' + ctx.entries.icon + '" uses an unsupported format; the host accepts SVG, PNG, JPEG, or WebP.',
+            evidence: 'icon -> ' + ctx.entries.icon,
+            hint: 'Management cards read the icon without activating the plugin.',
+          });
+        }
+        try {
+          if (statSync(join(ctx.dir, ctx.entries.icon)).size > 256 * 1024) {
+            push({
+              level: 'warn',
+              file: 'package.json',
+              line: manifestLine(ctx.manifestText, 'icon'),
+              message: 'icon "' + ctx.entries.icon + '" is larger than 256 KiB; the host may ignore it.',
+              evidence: 'icon -> ' + ctx.entries.icon,
+              hint: 'The host reads display metadata before activation; keep the icon small.',
+            });
+          }
+        } catch { /* the existence check already covered an unreadable file */ }
+      }
+
+      if (ctx.packlist.complete && Array.isArray(ctx.files)) {
+        for (const raw of ctx.files) {
+          if (typeof raw !== 'string' || raw.startsWith('!')) continue;
+          const pattern = raw.replace(/^\.\//, '').replace(/\/+$/, '');
+          if (!pattern) continue;
+          const matched = [...ctx.packlist.paths].some((candidate) =>
+            candidate === pattern
+            || candidate.startsWith(pattern + '/')
+            || ((pattern.includes('*') || pattern.includes('?') || pattern.includes('[')) && globToRegExp(pattern).test(candidate)));
+          if (matched) continue;
+          push({
+            level: 'warn',
+            file: 'package.json',
+            line: manifestLine(ctx.manifestText, '"files"'),
+            message: 'files entry "' + raw + '" matches no packed file.',
+            evidence: 'files: ' + JSON.stringify(ctx.files),
+            hint: 'A stale files entry usually means a path was renamed or a build output was not produced.',
+          });
+        }
       }
     },
   },

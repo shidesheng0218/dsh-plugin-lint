@@ -19,6 +19,7 @@
   "exports": {
     ".": "./src/index.js",
     "./experimental": "./src/experimental/index.js",
+    "./schema/dsh-manifest.schema.json": "./schema/dsh-manifest.schema.json",
     "./package.json": "./package.json"
   },
   "bin": {
@@ -31,6 +32,7 @@
   "files": [
     "bin/",
     "src/",
+    "schema/",
     "scripts/probe-boot.mjs",
     "scripts/lib/",
     "README.md",
@@ -39,7 +41,7 @@
   ],
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:coverage": "node --experimental-test-coverage --test --test-coverage-lines=85 --test-coverage-branches=80 --test-coverage-functions=80 test/*.test.js",
+    "test:coverage": "node --experimental-test-coverage --test --test-coverage-lines=85 --test-coverage-branches=80 --test-coverage-functions=80 --test-coverage-exclude=\"**/node_modules/**\" --test-coverage-exclude=\"**/.cache/**\" test/*.test.js",
     "package:smoke": "node scripts/package-smoke.mjs",
     "e2e:official": "node scripts/e2e-official.mjs --expect 80",
     "harvest:events": "node scripts/harvest-event-types.mjs",

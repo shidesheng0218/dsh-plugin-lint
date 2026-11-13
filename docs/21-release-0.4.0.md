@@ -15,13 +15,16 @@
 
 ## 2. lint 引擎
 
-- 规则集扩充为 12 条：E1–E5 的判定对齐宿主与 npm 的真实语义，新增 E6 peer 真值预检（仅在给出 `--dsh-version` 时生效）：
+- 规则集扩充为 13 条：E1–E5 的判定对齐宿主与 npm 的真实语义，新增 E6 peer 真值预检（仅在给出 `--dsh-version` 时生效）与 E7 发布产物契约（子路径 export、bin、icon、files 零匹配）：
   - E1 只读取 `append` 的第一个字面量实参，覆盖 `session` / `ctx.session` / `agent.session` / `this.session`；注释、字符串文本和变量实参不再被误读。事件目录用当前桌面宿主重新采集（380 类型），官方包新增事件不再被报 error。
   - E2 接受宿主 loader 会归一化的 `<package>/client`；patch 行只在本包命名空间内被视为合法 id。
   - E3 按 `exports["."]` 优先解析宿主入口；被遮蔽的失效 `main` 降为 info。
   - E4 只接受 string 或 `{ default }` 的 `./client` export，与浏览器侧解析器一致。
   - E5 对齐 npm-packlist：`files` 存在时禁用根 ignore 文件，`.gitignore` 作为回退，子目录 ignore 仍然生效。
 - 报告仍携带 `limits`；SARIF/badge/text 输出与退出码契约不变。
+- 作者/发布工作流成为 CLI 契约的一部分：`--phase author` 在构建前把未生成的产物视为提示；`--changed` / `--staged` 把 git diff 映射到包根；`--pack`、`.tgz`、`--from-npm` 强制 publish 阶段并体检真实 tarball（路径穿越与符号链接在解包前拒绝）；`--profile` 对已安装 profile 做宿主真值扫描并打印 `allow-version` 命令；`--fail-on`、`--max-warnings`、`--format github|junit|json-envelope`、`-o`、baseline 与 `--init` 补齐 CI 门禁。`--init` 同时生成 workflow、空 baseline 与 agent skill。
+- `action.yml` 支持 sticky PR comment、step summary 与可选 SARIF 输出；包内发布 `schema/dsh-manifest.schema.json`，编辑器可先于 CI 校验 `dsh` 块。
+- 事件目录带版本元数据（`harvestedAt`、`dshVersions`），并进入 `ruleset` 身份与 baseline 指纹；当 `--dsh-version` 比目录覆盖的新时，未知事件类型降为 warn 而不是 error。
 
 ## 3. 探针
 
@@ -51,12 +54,12 @@
 - lint 发布前跑单测、官方 80 包零误报基线、打包安装冒烟和 `PROBE_VERSION` 一致性检查；panel 发布前跑单测与打包 import 冒烟。
 - 点名数据的自动提交与 artifact 上传需要显式 `publish_named_data=true`；`matrix/public/` 默认被 gitignore。
 
-## 7. 验证结果（2026-11-10，发布候选）
+## 7. 验证结果（2026-11-13，发布候选）
 
 | 检查 | 结果 |
 | --- | --- |
-| `npm test` | 381 通过 / 0 失败 |
-| `npm run test:coverage` | 行 90.4% / 分支 81.7% / 函数 91.2%（门槛 85/80/80） |
+| `npm test` | 430 通过 / 0 失败（49 个测试文件） |
+| `npm run test:coverage` | 行 95.3% / 分支 86.2% / 函数 96.1%（门槛 85/80/80） |
 | 官方 80 包零误报基线 | 0 error · 0 warn，PASS |
 | 自检 `panel` + `test/probe-plugins` | 0 error / 0 warn |
 | `node scripts/package-smoke.mjs` | 根包与 panel 真实 tarball 安装、全部 bin `--help`、核心/实验导出、panel import 均通过 |
@@ -69,7 +72,7 @@
 3. **没有新的浏览器截图验收。** `scripts/screenshot-panel.mjs` 仍是旧快照；发布前应在一次性 web profile 里重新截图并核对 aggregate/冲突/更新区域。
 4. **`matrix/public/` 未发布。** panel 的运行时同步源仍返回 404；npm 安装只显示聚合计数，这是数据政策的默认结果，不是故障。
 5. **同源插件信任模型未变。** panel 的 action header / `confirmed` 对同源插件 JS 可伪造；真正的边界需要宿主级权限或产品决策。
-6. **已知 P1 未清**：矩阵 cacheKey 未纳入 tools/isolation；error cell 仍会阻断导出链；报告的 SARIF URI 仍是绝对路径。
+6. **已知 P1 未清**：矩阵 cacheKey 未纳入 tools/isolation；error cell 仍会阻断导出链。
 
 ## 9. 发布清单（人工）
 
