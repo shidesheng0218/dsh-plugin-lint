@@ -29,7 +29,7 @@ runs:
       env:
         INPUT_PATH: ${{ inputs.path }}
         INPUT_BASELINE: ${{ inputs.baseline }}
-        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_FAIL_ON: ${{ inputs['fail-on'] }}
         INPUT_SUMMARY: ${{ inputs.summary }}
       run: |
         set -uo pipefail

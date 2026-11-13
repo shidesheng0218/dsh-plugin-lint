@@ -9,6 +9,7 @@ const panel = JSON.parse(readFileSync(fileURLToPath(new URL('../panel/package.js
 const ci = readFileSync(fileURLToPath(new URL('../.github/workflows/ci.yml', import.meta.url)), 'utf8');
 const publishLint = readFileSync(fileURLToPath(new URL('../.github/workflows/publish-lint.yml', import.meta.url)), 'utf8');
 const publishPanel = readFileSync(fileURLToPath(new URL('../.github/workflows/publish-panel.yml', import.meta.url)), 'utf8');
+const action = readFileSync(fileURLToPath(new URL('../action.yml', import.meta.url)), 'utf8');
 
 const CORE_EXPORTS = [
   'DOC', 'EVENT_TYPES', 'RULES', 'filesCover', 'formatText',
@@ -80,4 +81,11 @@ test('publishing requires a new version and never auto-bumps', () => {
   assert.match(publishLint, /PROBE_VERSION/);
   assert.match(publishLint, /e2e-official\.mjs --expect 80/);
   assert.match(publishPanel, /node --input-type=module -e/);
+});
+
+test('the composite action is wired to the packed CLI and escapes dashed inputs', () => {
+  assert.match(action, /bin\/dsh-plugin-lint\.mjs/);
+  assert.match(action, /inputs\['fail-on'\]/);
+  assert.match(action, /--format github/);
+  assert.match(action, /GITHUB_STEP_SUMMARY/);
 });
