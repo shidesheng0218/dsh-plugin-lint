@@ -166,5 +166,6 @@ git log --oneline -5 -- panel/package.json
 
 - 通过终端 `npm login --auth-type=web` + 2FA 批准发布；`NPM_TOKEN` 仍未配置，两个 publish workflow 仍会在 token 检查处失败关闭（版本已在 registry 时 job 空转）。
 - 发布前门禁全部通过：430 个用例、覆盖率行 95.3% / 分支 86.2% / 函数 96.1%、官方 80 包零误报基线、package smoke。
+- 发布后从 registry 重新安装两个包做冒烟：CLI `0.4.0`、十个核心导出、`./experimental`、manifest schema、panel `apply`、aggregate-only 与 panel 自检 0 发现，全部通过。
 - 200-cell Docker 矩阵验收、新的浏览器截图验收与 `matrix/public/` 仍未完成，见 [docs/21 §8](21-release-0.4.0.md)。
 - 发布后按 docs/21 §9 对账，再把 release notes 从 draft 改为已发布。

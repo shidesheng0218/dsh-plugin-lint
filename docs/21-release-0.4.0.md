@@ -63,6 +63,7 @@
 | 官方 80 包零误报基线 | 0 error · 0 warn，PASS |
 | 自检 `panel` + `test/probe-plugins` | 0 error / 0 warn |
 | `node scripts/package-smoke.mjs` | 根包与 panel 真实 tarball 安装、全部 bin `--help`、核心/实验导出、panel import 均通过 |
+| registry 安装冒烟（2026-11-13） | 从 npm 安装 lint `0.4.0` / panel `0.2.0`：CLI 版本、十个核心导出、`./experimental`、manifest schema、panel `apply`、aggregate-only 均正常；安装后的 panel 自检 0 error / 0 warn |
 | 真实 Docker 探针 | headless `active`（28 s）、web `active`（27 s，ready） |
 
 ## 8. 已知边界与发布阻塞
