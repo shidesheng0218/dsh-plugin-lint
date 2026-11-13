@@ -1,7 +1,8 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { appendCallSites, blockAfter, braceDepthAt, lineOfIndex, stringAfter } from './mask.js';
-import { clientExportTarget } from './load.js';
+import { clientExportTarget, isBuildOutput } from './load.js';
+import { evaluatePeers } from './peer.js';
 import { hasPackedFile } from './packlist.js';
 
 const CATALOG = JSON.parse(readFileSync(new URL('../data/event-types.json', import.meta.url), 'utf8'));
@@ -12,6 +13,7 @@ export const DOC = {
   practices: 'dsh plugin-development / references/practices.md',
   host: 'dsh plugin-development / references/host-plugin.md',
   ui: 'dsh plugin-development / references/ui-plugin.md',
+  appBoot: 'dsh app-boot / README.md (peer admission)',
 };
 
 const EVENT_TYPE_RE = /^[a-z][a-z0-9-]*\/[a-z0-9-]+$/;
@@ -111,6 +113,17 @@ export const RULES = [
       for (const [label, rel, source] of declared) {
         if (rel === undefined) continue;
         if (ctx.exists(rel)) continue;
+        if (ctx.phase === 'author' && ctx.buildScripts && isBuildOutput(rel)) {
+          push({
+            level: 'info',
+            file: 'package.json',
+            line: manifestLine(ctx.manifestText, source),
+            message: label + ' "' + rel + '" is not built yet; run the build before publishing.',
+            evidence: source + ' -> ' + rel + ' (author phase)',
+            hint: 'The publish phase treats a missing build output as an error; the author phase reports it as a hint so a pre-build tree is not accused of being broken.',
+          });
+          continue;
+        }
         push({
           file: 'package.json',
           line: manifestLine(ctx.manifestText, source),
@@ -148,7 +161,19 @@ export const RULES = [
       // the platform itself resolves the browser artifact only through the
       // ./client export, and only for a string or a string {default}.
       const declared = clientExportTarget(ctx.manifest.exports || {}, './client');
-      if (declared !== undefined && ctx.exists(String(declared).replace(/^\.\//, ''))) return;
+      const declaredRel = declared === undefined ? undefined : String(declared).replace(/^\.\//, '');
+      if (declaredRel !== undefined && ctx.exists(declaredRel)) return;
+      if (ctx.phase === 'author' && ctx.buildScripts && declaredRel !== undefined && isBuildOutput(declaredRel)) {
+        push({
+          level: 'info',
+          file: 'package.json',
+          line: manifestLine(ctx.manifestText, 'dsh.client'),
+          message: 'dsh.client is declared; its client entry "' + declaredRel + '" is not built yet.',
+          evidence: 'exports["./client"] -> ' + declaredRel + ' (author phase)',
+          hint: 'Run the build before publishing; the publish phase reports the missing artifact as an error.',
+        });
+        return;
+      }
       push({
         file: 'package.json',
         line: manifestLine(ctx.manifestText, 'dsh.client'),
@@ -180,6 +205,37 @@ export const RULES = [
           message: label + ' "' + rel + '" is not covered by "files", so it is absent from the published tarball.',
           evidence: 'files: ' + JSON.stringify(ctx.files),
           hint: 'This class of bug passes local testing and only appears after publish.',
+        });
+      }
+    },
+  },
+
+  {
+    id: 'E6',
+    level: 'error',
+    title: 'a DSH peer range excludes the target runtime',
+    doc: DOC.appBoot,
+    check(ctx, options, push) {
+      if (!options.dshVersion) return;
+      const peers = evaluatePeers(ctx.manifest, options.dshVersion);
+      if (peers.peers.length === 0) return;
+      for (const peer of peers.unsatisfied) {
+        push({
+          file: 'package.json',
+          line: manifestLine(ctx.manifestText, peer.name),
+          message: 'peerDependency ' + peer.name + ' "' + peer.range + '" does not accept DSH ' + options.dshVersion + '.',
+          evidence: peer.name + ': ' + peer.range,
+          hint: 'DSH checks peerDependencies on @deepseek-ai/dsh* before importing a plugin; every declared range must match the running version, and prereleases participate. Widen the range, or grant an exact exemption in the profile compatibility.json.',
+        });
+      }
+      for (const peer of peers.undecidable) {
+        push({
+          level: 'info',
+          file: 'package.json',
+          line: manifestLine(ctx.manifestText, peer.name),
+          message: 'peerDependency ' + peer.name + ' "' + peer.range + '" is outside the range grammar this rule can decide.',
+          evidence: peer.name + ': ' + peer.range,
+          hint: 'The host still evaluates this range. Treat a clean run as "not checked", not as "compatible".',
         });
       }
     },

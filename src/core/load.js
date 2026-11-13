@@ -13,7 +13,7 @@ const SKIP_DIRS = new Set([
 const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const MAX_FILES = 3000;
 
-export function loadPackage(dir) {
+export function loadPackage(dir, options = {}) {
   const manifestPath = join(dir, 'package.json');
   if (!existsSync(manifestPath)) throw new Error('not a package directory (no package.json): ' + dir);
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
@@ -46,12 +46,15 @@ export function loadPackage(dir) {
   };
 
   const jsFiles = [];
-  collect(dir, dir, jsFiles);
+  const authorPhase = options.phase === 'author';
+  collect(dir, dir, jsFiles, authorPhase);
 
   return {
     dir,
     manifest,
     manifestPath,
+    phase: options.phase || 'publish',
+    buildScripts: Boolean(manifest.scripts && (manifest.scripts.build || manifest.scripts.prepack || manifest.scripts.prepare)),
     entries,
     jsFiles,
     files: Array.isArray(manifest.files) ? manifest.files : undefined,
@@ -65,17 +68,24 @@ export function loadPackage(dir) {
   };
 }
 
-function collect(root, current, out) {
+/** Artifacts a build step produces; an author-phase run may legitimately lack them. */
+export function isBuildOutput(rel) {
+  const value = String(rel || '').replace(/^\.\//, '');
+  return /^(lib|dist|build|out)\//.test(value) || /\.(js|mjs|cjs|jsx)$/.test(value);
+}
+
+function collect(root, current, out, authorPhase = false) {
+  const pattern = authorPhase ? /\.(js|mjs|cjs|jsx|ts|tsx|mts|cts)$/ : /\.(js|mjs|cjs|jsx)$/;
   let names;
   try { names = readdirSync(current, { withFileTypes: true }); } catch { return; }
   for (const dirent of names) {
     const abs = join(current, dirent.name);
     if (dirent.isDirectory()) {
       if (SKIP_DIRS.has(dirent.name)) continue;
-      collect(root, abs, out);
+      collect(root, abs, out, authorPhase);
       continue;
     }
-    if (!/\.(js|mjs|cjs|jsx)$/.test(dirent.name)) continue;
+    if (!pattern.test(dirent.name)) continue;
     let size = 0;
     try { size = statSync(abs).size; } catch { continue; }
     if (size > MAX_FILE_BYTES) continue;

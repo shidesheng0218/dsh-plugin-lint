@@ -74,7 +74,7 @@ Every lint finding carries a file, a line, an evidence excerpt, and the upstream
 
 ```console
 $ node bin/dsh-plugin-lint.mjs .
-demo-plugin@1.0.0  11 checks
+demo-plugin@1.0.0  12 checks
 
   E2 error  client bundle factory id matches nothing the loader can ask for
          lib/client.js:2
@@ -94,7 +94,7 @@ demo-plugin@1.0.0  11 checks
   1 error · 1 warn · 0 info
 ```
 
-The header count is read from the rule set (`RULES.length`); it is 11 in this checkout.
+The header count is read from the rule set (`RULES.length`); it is 12 in this checkout.
 
 ## The rules
 
@@ -111,6 +111,7 @@ Rule IDs are stable identifiers, not severity labels: `W3` reports at info level
 | E3 | `main` / `exports["./client"]` / `dsh.bundle.patch` / `icon` points at a missing file |
 | E4 | `dsh.client` declared with no resolvable `./client` export |
 | E5 | `files[]` omits an artifact the manifest depends on — the "works locally, broken after publish" bug |
+| E6 | a `@deepseek-ai/dsh*` peer range does not accept the target runtime (`--dsh-version`); the host's real admission gate |
 
 **warn** — documented risk patterns, evidence required
 
@@ -194,6 +195,33 @@ npx @shidesheng0218/dsh-plugin-lint . --exit-code  # exit 1 when an error-level 
 ```
 
 Exit codes: `0` ok · `1` errors found with `--exit-code` · `2` the run failed.
+
+The 0.4.0 author workflow adds the CI-facing surface:
+
+```bash
+node bin/dsh-plugin-lint.mjs . --phase author          # pre-build TypeScript tree: unbuilt outputs are hints, not errors
+node bin/dsh-plugin-lint.mjs . --fail-on warn          # gate on errors+warnings; --max-warnings N also works
+node bin/dsh-plugin-lint.mjs . --format github        # GitHub Actions annotations
+node bin/dsh-plugin-lint.mjs . --format junit -o report.xml
+node bin/dsh-plugin-lint.mjs . --format json-envelope  # { schemaVersion, reports, baseline }
+node bin/dsh-plugin-lint.mjs . --baseline .dsh-plugin-lint-baseline.json
+node bin/dsh-plugin-lint.mjs . --write-baseline       # record the current findings
+node bin/dsh-plugin-lint.mjs --init                  # write a GitHub workflow and an empty baseline
+node bin/dsh-plugin-lint.mjs . --dsh-version 0.2.2-rc.1  # E6 checks the host's peer admission
+node bin/dsh-plugin-lint.mjs --rules --explain E6
+```
+
+The composite action is the same surface in CI:
+
+```yaml
+- uses: shidesheng0218/dsh-plugin-lint@main   # or the release tag once v0.4.0 is tagged
+  with:
+    path: .
+    fail-on: error
+    baseline: .dsh-plugin-lint-baseline.json
+```
+
+The baseline fingerprint is `sha256(rule + file + normalized evidence)` and deliberately excludes the line number, so reformatting or rebuilding does not revive a suppressed finding. Every report still prints how many findings the baseline suppressed.
 
 To run the checkout instead of the npm release, use `node bin/dsh-plugin-lint.mjs <dir>`. Commands in this README that start with `node scripts/` also run from a **checkout** — the matrix runner, the probe, the upgrade preview, and the report builders read files the npm package does not ship.
 
@@ -561,7 +589,7 @@ tool-beta: Error: tool "collide_probe" is already registered
 
 没有逐插件数据时，页面仍展示矩阵全景：50 个插件 × 2 个版本，0.2.0-rc.2 上 100 格里 80 格 active，0.2.1-alpha.2 上 72 格 active。
 
-它用这个项目的 linter 检查自己是 0 发现（11 checks）：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
+它用这个项目的 linter 检查自己是 0 发现（12 checks）：只有 react 来自浏览器模块表，没有引入任何 Harness Client 包，颜色只用 `--dsw-alias-*` 令牌（带回退）。视觉验证抓到两个代码评审没发现的 bug，见 [docs/16](docs/16-m5-panel.md)。
 
 ### v0.3 分析能力（experimental，未发布）
 
@@ -621,6 +649,21 @@ node bin/dsh-plugin-analyze.mjs full panel --json # v0.3 分析（源码 checkou
 ```
 
 退出码：`0` 正常 · `1` 有 error 级发现（配合 `--exit-code`）· `2` 本次运行失败。
+
+0.4.0 的作者工作流新增：
+
+```bash
+node bin/dsh-plugin-lint.mjs . --phase author           # 构建前的 TS 源码树：未生成的产物是提示，不是 error
+node bin/dsh-plugin-lint.mjs . --fail-on warn           # 按 error/warn 门禁；--max-warnings N 也可用
+node bin/dsh-plugin-lint.mjs . --format github          # GitHub Actions 注解
+node bin/dsh-plugin-lint.mjs . --format junit -o report.xml
+node bin/dsh-plugin-lint.mjs . --baseline baseline.json # 只拦新增问题
+node bin/dsh-plugin-lint.mjs . --write-baseline
+node bin/dsh-plugin-lint.mjs --init                     # 生成 GitHub workflow 和空 baseline
+node bin/dsh-plugin-lint.mjs . --dsh-version 0.2.2-rc.1 # E6 按宿主真实 peer 门禁预检
+```
+
+baseline 的指纹是 `sha256(rule + file + 归一化 evidence)`，不含行号：格式化或重新构建不会让已抑制的问题复活；报告仍会显示被 baseline 抑制的数量。
 
 本 README 里以 `node scripts/` 开头的命令需要**克隆本仓库**运行——矩阵跑批、升级预览、探针与报告生成都依赖 npm 包里不包含的文件。
 

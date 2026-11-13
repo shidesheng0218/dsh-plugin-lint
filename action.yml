@@ -1,0 +1,54 @@
+name: dsh-plugin-lint
+description: Conformance checks for a DeepSeek Harness plugin, with GitHub annotations or a job summary.
+author: shidesheng0218
+branding:
+  icon: check-circle
+  color: blue
+inputs:
+  path:
+    description: Package directory, or a container of package directories.
+    required: false
+    default: .
+  baseline:
+    description: Baseline file; findings recorded there are suppressed.
+    required: false
+    default: ''
+  fail-on:
+    description: error, warn, or info.
+    required: false
+    default: error
+  summary:
+    description: Append a short text summary to the job summary.
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Lint
+      shell: bash
+      env:
+        INPUT_PATH: ${{ inputs.path }}
+        INPUT_BASELINE: ${{ inputs.baseline }}
+        INPUT_FAIL_ON: ${{ inputs.fail-on }}
+        INPUT_SUMMARY: ${{ inputs.summary }}
+      run: |
+        set -uo pipefail
+        args=("$INPUT_PATH" --format github --fail-on "$INPUT_FAIL_ON")
+        if [ -n "$INPUT_BASELINE" ] && [ -f "$INPUT_BASELINE" ]; then
+          args+=(--baseline "$INPUT_BASELINE")
+        fi
+        status=0
+        node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${args[@]}" || status=$?
+        if [ "$INPUT_SUMMARY" = "true" ] && [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          summary_args=("$INPUT_PATH" --quiet --no-color)
+          if [ -n "$INPUT_BASELINE" ] && [ -f "$INPUT_BASELINE" ]; then
+            summary_args+=(--baseline "$INPUT_BASELINE")
+          fi
+          {
+            echo '### dsh-plugin-lint'
+            echo '```'
+            node "${{ github.action_path }}/bin/dsh-plugin-lint.mjs" "${summary_args[@]}" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi
+        exit "$status"

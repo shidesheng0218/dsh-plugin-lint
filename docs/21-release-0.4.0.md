@@ -15,7 +15,7 @@
 
 ## 2. lint 引擎
 
-- 11 条规则及其分级不变；E1–E5 的判定对齐宿主与 npm 的真实语义：
+- 规则集扩充为 12 条：E1–E5 的判定对齐宿主与 npm 的真实语义，新增 E6 peer 真值预检（仅在给出 `--dsh-version` 时生效）：
   - E1 只读取 `append` 的第一个字面量实参，覆盖 `session` / `ctx.session` / `agent.session` / `this.session`；注释、字符串文本和变量实参不再被误读。事件目录用当前桌面宿主重新采集（380 类型），官方包新增事件不再被报 error。
   - E2 接受宿主 loader 会归一化的 `<package>/client`；patch 行只在本包命名空间内被视为合法 id。
   - E3 按 `exports["."]` 优先解析宿主入口；被遮蔽的失效 `main` 降为 info。

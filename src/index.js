@@ -18,7 +18,7 @@ const LIMITS = [
 ];
 
 export function lintPackage(dir, options = {}) {
-  const pkg = loadPackage(dir);
+  const pkg = loadPackage(dir, options);
   const manifestText = pkg.text('package.json') || '';
   const ctx = Object.assign({}, pkg, {
     manifestText,

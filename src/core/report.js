@@ -1,3 +1,7 @@
+import { realpathSync } from 'node:fs';
+import { isAbsolute, join, relative } from 'node:path';
+import { fingerprint } from './baseline.js';
+
 const COLOR = {
   error: '\u001b[31m',
   warn: '\u001b[33m',
@@ -72,6 +76,20 @@ export function formatText(report, options = {}) {
   return lines.join('\n');
 }
 
+function uriFor(report, file) {
+  const absolute = join(report.target.path, file || 'package.json');
+  let cwd = process.cwd();
+  let target = absolute;
+  try { cwd = realpathSync(cwd); } catch { /* keep the logical path */ }
+  try { target = realpathSync(absolute); } catch { /* the finding may point at a virtual path */ }
+  const rel = relative(cwd, target).replace(/\\/g, '/');
+  return rel && !rel.startsWith('..') && !isAbsolute(rel) ? rel : target.replace(/\\/g, '/');
+}
+
+function ruleHelpUri(id) {
+  return 'https://github.com/shidesheng0218/dsh-plugin-lint/blob/main/docs/rules/' + id + '.md';
+}
+
 export function toSarif(reports) {
   const list = Array.isArray(reports) ? reports : [reports];
   const ruleIndex = new Map();
@@ -85,7 +103,7 @@ export function toSarif(reports) {
           id: f.rule,
           name: f.rule,
           shortDescription: { text: f.title },
-          helpUri: 'https://github.com/shidesheng0218/dsh-plugin-lint',
+          helpUri: ruleHelpUri(f.rule),
           properties: { doc: f.doc, level: f.level },
         });
       }
@@ -94,9 +112,10 @@ export function toSarif(reports) {
         ruleIndex: ruleIndex.get(f.rule),
         level: f.level === 'error' ? 'error' : f.level === 'warn' ? 'warning' : 'note',
         message: { text: f.message + (f.hint ? ' — ' + f.hint : '') },
+        partialFingerprints: { 'dshPluginLint/v1': fingerprint(f) },
         locations: [{
           physicalLocation: {
-            artifactLocation: { uri: report.target.path + '/' + (f.file || 'package.json') },
+            artifactLocation: { uri: uriFor(report, f.file), uriBaseId: '%SRCROOT%' },
             region: { startLine: f.line || 1 },
           },
         }],
@@ -111,4 +130,45 @@ export function toSarif(reports) {
       results,
     }],
   };
+}
+
+function escapeData(value) {
+  return String(value).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+}
+
+function escapeProperty(value) {
+  return escapeData(value).replace(/:/g, '%3A').replace(/,/g, '%2C');
+}
+
+export function toGithub(reports) {
+  const lines = [];
+  for (const report of reports) {
+    for (const f of report.findings) {
+      const level = f.level === 'error' ? 'error' : f.level === 'warn' ? 'warning' : 'notice';
+      const properties = ['file=' + escapeProperty(uriFor(report, f.file))];
+      if (f.line) properties.push('line=' + f.line);
+      properties.push('title=' + escapeProperty(f.rule + ' ' + f.title));
+      lines.push('::' + level + ' ' + properties.join(',') + '::' + escapeData(f.message + (f.hint ? ' — ' + f.hint : '')));
+    }
+  }
+  return lines.join('\n');
+}
+
+function xml(value) {
+  return String(value).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+}
+
+export function toJunit(reports) {
+  const suites = reports.map((report) => {
+    const failures = report.findings.filter((finding) => finding.level !== 'info').length;
+    const cases = report.findings.map((finding) => {
+      const name = finding.rule + ' ' + (finding.file || 'package.json') + (finding.line ? ':' + finding.line : '');
+      const body = finding.level === 'info'
+        ? ''
+        : '<failure type="' + xml(finding.rule) + '" message="' + xml(finding.message) + '">' + xml(finding.evidence || '') + '</failure>';
+      return '<testcase classname="' + xml(report.target.name) + '" name="' + xml(name) + '">' + body + '</testcase>';
+    }).join('');
+    return '<testsuite name="' + xml(report.target.name) + '" tests="' + report.findings.length + '" failures="' + failures + '">' + cases + '</testsuite>';
+  }).join('');
+  return '<?xml version="1.0" encoding="UTF-8"?>\n<testsuites>' + suites + '</testsuites>';
 }

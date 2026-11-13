@@ -9,14 +9,14 @@ import { lintPackage, RULES, toBadge } from '../src/index.js';
 import { maskSource } from '../src/mask.js';
 
 /** Build a throwaway package on disk and lint it. */
-function fixture(files) {
+function fixture(files, options) {
   const dir = mkdtempSync(join(tmpdir(), 'dsh-plugin-lint-'));
   for (const [rel, content] of Object.entries(files)) {
     const abs = join(dir, rel);
     mkdirSync(join(abs, '..'), { recursive: true });
     writeFileSync(abs, typeof content === 'string' ? content : JSON.stringify(content, null, 2));
   }
-  const report = lintPackage(dir);
+  const report = lintPackage(dir, options);
   rmSync(dir, { recursive: true, force: true });
   return report;
 }
@@ -448,4 +448,80 @@ test('E4 accepts a string-default client export', () => {
     'client.js': 'window.__ModuleLoader__.load({ id: "demo-plugin", factory: () => ({}) });',
   });
   assert.equal(rules(report).includes('E4'), false);
+});
+
+test('E6 reports a DSH peer range that excludes the target runtime', () => {
+  const report = fixture({
+    'package.json': base({ peerDependencies: { '@deepseek-ai/dsh': '>=0.3.0' } }),
+    'index.js': 'export function apply() {}',
+  }, { dshVersion: '0.2.2-rc.1' });
+  const hit = report.findings.find((finding) => finding.rule === 'E6');
+  assert.ok(hit, 'expected E6');
+  assert.equal(hit.level, 'error');
+  assert.match(hit.message, /does not accept DSH 0\.2\.2-rc\.1/);
+});
+
+test('E6 accepts a prerelease target inside the range, like the host', () => {
+  const report = fixture({
+    'package.json': base({ peerDependencies: { '@deepseek-ai/dsh': '>=0.2.0' } }),
+    'index.js': 'export function apply() {}',
+  }, { dshVersion: '0.2.2-alpha.3' });
+  assert.equal(report.findings.some((finding) => finding.rule === 'E6'), false);
+});
+
+test('E6 stays quiet without a target version or without DSH peers', () => {
+  const noTarget = fixture({
+    'package.json': base({ peerDependencies: { '@deepseek-ai/dsh': '>=9.9.9' } }),
+    'index.js': 'export function apply() {}',
+  });
+  assert.equal(noTarget.findings.some((finding) => finding.rule === 'E6'), false);
+  const noPeers = fixture({
+    'package.json': base({ dependencies: { '@deepseek-ai/dsh': '>=9.9.9' } }),
+    'index.js': 'export function apply() {}',
+  }, { dshVersion: '0.2.2-rc.1' });
+  assert.equal(noPeers.findings.some((finding) => finding.rule === 'E6'), false);
+});
+
+test('E6 reports an undecidable range as info, never as an error', () => {
+  const report = fixture({
+    'package.json': base({ peerDependencies: { '@deepseek-ai/dsh': 'latest' } }),
+    'index.js': 'export function apply() {}',
+  }, { dshVersion: '0.2.2-rc.1' });
+  const hit = report.findings.find((finding) => finding.rule === 'E6');
+  assert.ok(hit);
+  assert.equal(hit.level, 'info');
+});
+
+test('E6 treats workspace:^ as the runtime version, like the host', () => {
+  const report = fixture({
+    'package.json': base({ peerDependencies: { '@deepseek-ai/dsh': 'workspace:^' } }),
+    'index.js': 'export function apply() {}',
+  }, { dshVersion: '0.2.2-rc.1' });
+  assert.equal(report.findings.some((finding) => finding.rule === 'E6'), false);
+});
+
+const tsLayout = () => ({
+  'package.json': base({
+    main: 'lib/index.js',
+    exports: { '.': './lib/index.js', './client': './lib/client.js' },
+    files: ['lib'],
+    scripts: { prepack: 'tsc' },
+    dsh: { client: { platform: 'web' } },
+  }),
+  'src/index.ts': 'export function apply(ctx) { ctx.session.append("demo/custom", {}); }',
+  'src/client.tsx': 'export const view = 1;',
+});
+
+test('publish phase treats unbuilt TypeScript outputs as errors', () => {
+  const report = fixture(tsLayout());
+  assert.ok(report.findings.some((finding) => finding.rule === 'E3' && finding.level === 'error'));
+  assert.ok(report.findings.some((finding) => finding.rule === 'E4' && finding.level === 'error'));
+});
+
+test('author phase collects TypeScript and does not accuse an unbuilt tree', () => {
+  const report = fixture(tsLayout(), { phase: 'author' });
+  assert.equal(report.findings.some((finding) => finding.rule === 'E3' && finding.level === 'error'), false);
+  assert.equal(report.findings.some((finding) => finding.rule === 'E4' && finding.level === 'error'), false);
+  assert.ok(report.findings.some((finding) => finding.rule === 'E3' && finding.level === 'info'));
+  assert.ok(report.findings.some((finding) => finding.rule === 'E1' && finding.file === 'src/index.ts'), 'TS files are analysed in author phase');
 });
