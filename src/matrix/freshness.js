@@ -11,7 +11,7 @@ function readJson(path) {
 }
 
 function registryUrl(name) {
-  return REGISTRY + encodeURIComponent(name).replace(/^@/, '@').replace(/%2[fF]/g, '%2f');
+  return REGISTRY + encodeURIComponent(name);
 }
 
 async function fetchPackument(name, fetchImpl) {
