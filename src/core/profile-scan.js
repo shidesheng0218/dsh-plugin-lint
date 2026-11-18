@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { evaluatePeers } from './peer.js';
+import { loadPackage } from './load.js';
+import { detectConflicts } from '../experimental/conflicts.js';
 
 function readJson(path) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return undefined; }
@@ -64,13 +66,41 @@ function allowCommand(profileDir, name, version, runtime) {
 /**
  * Offline admission scan of an installed profile. It reads manifests only; it
  * never imports a plugin or touches the running host.
+ *
+ * With `candidate`, one extra package dir is evaluated for peers and joined into
+ * the conflict scan. Conflict scanning loads each installed plugin's source with
+ * a bounded `loadPackage` (phase publish); bounds are best-effort and any skip is
+ * recorded in `limits`. Peer verdicts always complete regardless of bounds.
  */
-export function scanProfile(profileDir, { dshVersion } = {}) {
+export function scanProfile(profileDir, { dshVersion, candidate, maxPlugins = 30, perPluginMs = 2000 } = {}) {
   if (!existsSync(join(profileDir, 'package.json'))) {
     throw new Error('not a profile directory (no package.json): ' + profileDir);
   }
   const runtime = profileRuntimeVersion(profileDir, dshVersion);
+  const limits = [];
   const plugins = [];
+  const conflictPackages = [];
+  let scanned = 0;
+
+  const tryAddConflictSource = (name) => {
+    if (scanned >= maxPlugins) {
+      limits.push(`conflict scan skipped ${name}: maxPlugins ${maxPlugins} reached`);
+      return;
+    }
+    const start = Date.now();
+    try {
+      const pkg = loadPackage(join(profileDir, 'node_modules', ...name.split('/')), { phase: 'publish' });
+      if (Date.now() - start > perPluginMs) {
+        limits.push(`conflict scan skipped ${name}: loadPackage exceeded ${perPluginMs}ms`);
+        return;
+      }
+      conflictPackages.push(pkg);
+      scanned += 1;
+    } catch {
+      limits.push(`conflict scan skipped ${name}: plugin source unreadable`);
+    }
+  };
+
   for (const name of installedBundles(profileDir)) {
     const manifest = readJson(join(profileDir, 'node_modules', ...name.split('/'), 'package.json'));
     if (!manifest) continue;
@@ -85,7 +115,33 @@ export function scanProfile(profileDir, { dshVersion } = {}) {
       undecidable: peers.undecidable,
       allowCommand: peers.verdict === 'will-reject' ? allowCommand(profileDir, name, manifest.version, runtime) : undefined,
     });
+    tryAddConflictSource(name);
   }
+
+  if (typeof candidate === 'string') {
+    const start = Date.now();
+    try {
+      const pkg = loadPackage(candidate, { phase: 'publish' });
+      const peers = evaluatePeers(pkg.manifest, runtime);
+      plugins.unshift({
+        name: pkg.manifest.name || basename(candidate),
+        version: typeof pkg.manifest.version === 'string' ? pkg.manifest.version : null,
+        firstParty: false,
+        candidate: true,
+        runtime: runtime || null,
+        verdict: runtime ? peers.verdict : 'unknown',
+        unsatisfied: peers.unsatisfied,
+        undecidable: peers.undecidable,
+        allowCommand: undefined,
+      });
+      conflictPackages.unshift(pkg);
+      if (Date.now() - start > perPluginMs) limits.push('candidate loadPackage exceeded ' + perPluginMs + 'ms');
+    } catch {
+      limits.push('candidate could not be loaded: ' + candidate);
+    }
+  }
+
+  const conflicts = detectConflicts(conflictPackages);
   const summary = {
     total: plugins.length,
     willReject: plugins.filter((plugin) => plugin.verdict === 'will-reject').length,
@@ -94,7 +150,7 @@ export function scanProfile(profileDir, { dshVersion } = {}) {
     unknown: plugins.filter((plugin) => plugin.verdict === 'unknown').length,
     firstParty: plugins.filter((plugin) => plugin.firstParty).length,
   };
-  return { schemaVersion: 1, mode: 'profile-scan', profile: profileDir, runtime: runtime || null, plugins, summary };
+  return { schemaVersion: 1, mode: 'profile-scan', profile: profileDir, runtime: runtime || null, plugins, conflicts, limits, summary };
 }
 
 export function formatProfileScan(scan) {
@@ -115,6 +171,23 @@ export function formatProfileScan(scan) {
       lines.push('  ? ' + plugin.name + '@' + (plugin.version || '?') + '  unknown (no runtime version or an undecidable range)');
     } else {
       lines.push('  ✓ ' + plugin.name + '@' + (plugin.version || '?') + '  ' + plugin.verdict);
+    }
+  }
+  const conflictTotal = scan.conflicts?.summary?.total ?? 0;
+  if (conflictTotal > 0) {
+    lines.push('');
+    lines.push('  conflicts (static pre-flight hints, not verdicts): ' + conflictTotal);
+    for (const slot of scan.conflicts.slots) {
+      lines.push('    slot ' + slot.resource + ': ' + slot.plugins.join(', '));
+    }
+    for (const tool of scan.conflicts.toolNames) {
+      lines.push('    tool ' + tool.resource + ': ' + tool.plugins.join(', '));
+    }
+    for (const route of scan.conflicts.routes) {
+      lines.push('    route ' + route.resource + ': ' + route.plugins.join(', '));
+    }
+    for (const key of scan.conflicts.configKeys) {
+      lines.push('    config ' + key.resource + ': ' + key.plugins.join(', '));
     }
   }
   return lines.join('\n');
