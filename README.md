@@ -8,7 +8,9 @@
 
 **Conformance checks and a compatibility matrix for DeepSeek Harness plugins: what the code declares, what it publishes, and what the host does with it.**
 
-[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Panel](#the-panel) · [v0.3 analysis (experimental)](#v03-analysis-experimental) · [Federation](#federation) · [中文](#中文)
+Zero runtime dependencies. 458 tests. Zero false positives across the 80 official `@deepseek-ai/*` packages. Peer-admission verdicts match the host's own semver check 80 for 80.
+
+[Rules](#the-rules) · [Probe](#the-probe) · [Matrix](#the-compatibility-matrix) · [Freshness](#matrix-freshness) · [Panel](#the-panel) · [v0.3 analysis (experimental)](#v03-analysis-experimental) · [Federation](#federation) · [中文](#中文)
 
 ![The compatibility panel inside the DSH settings page](docs/assets/panel.png)
 
@@ -36,7 +38,7 @@ The raw artifacts behind these numbers (`reports/`, `matrix/cells/`) are generat
 
 ## What this is
 
-Four tools that answer four different questions about a DeepSeek Harness plugin.
+Tools that answer five different questions about a DeepSeek Harness plugin.
 
 ```mermaid
 flowchart TB
@@ -48,14 +50,15 @@ flowchart TB
   probe --> matrix["<b>matrix runner</b><br/>plugin × DSH version × composition<br/>which version breaks it?"]
   probe --> conflicts["<b>conflicts</b><br/>several plugins at once<br/>do they collide?"]
 
+  matrix --> fresh["<b>matrix freshness</b><br/>status · watch · diff<br/>is the evidence still current?"]
   matrix --> panel["<b>settings panel</b><br/>your installed plugins<br/>what about <i>my</i> setup?"]
   matrix --> index["aggregate index<br/>ecosystem numbers"]
 
   classDef tool fill:#eef6ff,stroke:#4a7dbd,color:#123
-  class lint,probe,matrix,conflicts,panel tool
+  class lint,probe,matrix,conflicts,fresh,panel tool
 ```
 
-The linter and the static analysis commands need no build step, no config file and no network access. The probe and the matrix runner install packages from npm, so they need network access; the upgrade planner reads a local matrix and makes no network request.
+The linter and the static analysis commands need no build step, no config file and no network access. The probe and the matrix runner install packages from npm, so they need network access; the upgrade planner reads a local matrix and makes no network request. The freshness commands read the registry only when asked (`status --registry`, `watch`).
 
 Every lint finding carries a file, a line, an evidence excerpt, and the upstream document the rule encodes.
 
@@ -94,7 +97,7 @@ demo-plugin@1.0.0  13 checks
   1 error · 1 warn · 0 info
 ```
 
-The header count is read from the rule set (`RULES.length`); it is 12 in this checkout.
+The header count is read from the rule set (`RULES.length`); it is 13 in this checkout.
 
 ## The rules
 
@@ -509,13 +512,13 @@ Every report names packages, so the project follows one rule (ADR D-001): **name
 ## Development
 
 ```bash
-npm test                 # node --test test/*.test.js: 430 cases across 49 files
+npm test                 # node --test test/*.test.js: 458 cases across 54 files
 npm run test:coverage    # lines >=85%, branches >=80%, functions >=80%
 npm run e2e:official     # zero-false-positive baseline against official packages (needs npm access)
 npm run package:smoke    # pack both tarballs, install them, run every bin and entry point
 ```
 
-At this revision the suite has **430 node:test cases across 49 files**, coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%, and the measured run is **95.3% lines / 86.2% branches / 96.1% functions**. `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
+At this revision the suite has **458 node:test cases across 54 files**, coverage is gated at lines ≥85%, branches ≥80%, functions ≥80%, and the measured run is **95.3% lines / 86.2% branches / 96.1% functions** (0.4.0 release measurement; the case count is current). `npm test` passes from a plain shell and from inside a DSH shell — the panel tests isolate ambient `DSH_*` variables, and the CLI tests build fixtures in temporary directories. The count is measured, not aspirational; re-run the command if you need the current number.
 
 `npm run e2e:official` is the acceptance test that matters: it lints the official `@deepseek-ai/*` packages, which are the reference implementation of the documented practices. **Any error-level finding on them is a bug in a rule, not in the package.** The CI job fetches the packages from npm first:
 
@@ -534,13 +537,16 @@ Apache-2.0. See [NOTICE](NOTICE) for the data derived from DeepSeek Harness (MIT
 
 **给 DeepSeek Harness 插件做合规体检与兼容性实测的工具链：只陈述检测到的事实，每条结论都带文件、行号、证据和官方出处。**
 
-四个工具，各回答一个问题：
+零运行时依赖，458 个测试。80 个官方 `@deepseek-ai/*` 包零误报，peer 准入判定与宿主自身的 semver 检查 80/80 一致。
+
+五个工具，各回答一个问题：
 
 | 工具 | 回答的问题 |
 | --- | --- |
 | `dsh-plugin-lint` | 代码写得符不符合官方规范、发布出去会不会缺文件 |
 | `probe-boot` | 这个插件在这个 DSH 版本上能不能挂载、给了模型什么 |
 | 矩阵跑批 | 哪个版本会让它坏掉 |
+| 矩阵新鲜度（`status` / `watch` / `diff`） | 这份证据现在还新不新、两次跑批之间什么变了 |
 | `conflicts` | 几个插件装在一起会不会互相顶掉 |
 
 它不是什么：不是安全背书（干净的运行只代表没有规则命中）；也不替代旁边几个工具——doctor 管包结构、testkit 管真实宿主生命周期、trust-check 管能力披露、my-guardian 管崩了之后怎么办。
@@ -728,7 +734,9 @@ node bin/dsh-plugin-lint.mjs --from-npm @scope/name@1.2.3  # 体检 registry 上
 node bin/dsh-plugin-lint.mjs --profile ~/.dsh/profiles/default  # 对已安装 profile 做宿主真值扫描
 ```
 
-`--changed` / `--staged` 把 git diff 映射到最近的 `package.json`，monorepo 里只体检 PR 碰过的包。`--pack`、`.tgz` 与 `--from-npm` 强制进入 publish 阶段并体检真实产物：缺失的子路径 export、bin、icon 都按 npm 实际会发布的内容报告，含路径穿越或符号链接的 tarball 会在解包前被拒绝。`--profile` 从 DSH profile 读取运行时版本与已安装 bundle，列出宿主会加载/拒绝哪些插件，并为每个拒绝打印可直接执行的 `dsh plugin allow-version … --accept-risk` 命令；配合 `--exit-code` 时，任何 `will-reject` 都会让命令失败。
+`--changed` / `--staged` 把 git diff 映射到最近的 `package.json`，monorepo 里只体检 PR 碰过的包。`--pack`、`.tgz` 与 `--from-npm` 强制进入 publish 阶段并体检真实产物：缺失的子路径 export、bin、icon 都按 npm 实际会发布的内容报告，含路径穿越或符号链接的 tarball 会在解包前被拒绝。`--profile` 从 DSH profile 读取运行时版本与已安装 bundle，列出宿主会加载/拒绝哪些插件，并为每个拒绝打印可直接执行的 `dsh plugin allow-version … --accept-risk` 命令；配合 `--exit-code` 时，任何 `will-reject` 都会让命令失败。加 `--candidate <dir>` 可以把一个尚未安装的包也纳入评估（peer 准入 + 与已装插件的静态冲突扫描）；冲突只作为信息提示，不影响退出码。
+
+矩阵新鲜度三件套只对维护者：`status` 报告每个固定 DSH 版本的格子数、数据年龄与过期标记（`--registry` 额外对照 dist-tags 漂移）；`watch` 把新 DSH 版本和插件新发布解析成一份可钉版重跑的队列（含 integrity），本身不跑矩阵；`diff` 比较两次跑批，error 单列成 `errorTransitions`，v1 旧格进 `notComparable`。
 
 baseline 的指纹是 `sha256(rule + file + 归一化 evidence)`，不含行号：格式化或重新构建不会让已抑制的问题复活；报告仍会显示被 baseline 抑制的数量。
 
@@ -739,12 +747,12 @@ composite action 把同一套能力带进 CI。`comment: true` 需要 job 的 `p
 ### 测试
 
 ```bash
-npm test   # node --test test/*.test.js：430 个用例，49 个文件
+npm test   # node --test test/*.test.js：458 个用例，54 个文件
 npm run test:coverage   # 行 ≥85%、分支 ≥80%、函数 ≥80%
 npm run package:smoke   # 打包两个 tarball、安装、运行全部 bin 与入口
 ```
 
-当前 revision 的实测：430 个 `node:test` 用例、49 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，实测行 95.3% / 分支 86.2% / 函数 96.1%，普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
+当前 revision 的实测：458 个 `node:test` 用例、54 个测试文件，覆盖率门禁为行 ≥85%、分支 ≥80%、函数 ≥80%，0.4.0 发布实测行 95.3% / 分支 86.2% / 函数 96.1%（用例数为当前值），普通 shell 与 DSH shell 里均通过（panel 测试隔离 ambient `DSH_*` 变量；CLI 测试在临时目录造 fixture）。需要当前数字时直接跑 `npm test`。
 
 ### 文档
 
