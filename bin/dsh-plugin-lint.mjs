@@ -53,6 +53,7 @@ const USAGE = [
   '  --dsh-version <ver>    target DSH runtime for I1 and the E6 peer check',
   '  --phase <phase>        publish (default) | author (pre-build source tree)',
   '  --profile <dir>        offline admission scan of an installed DSH profile',
+  '  --candidate <dir>      with --profile: also evaluate a candidate plugin package',
   '  --changed [ref]        lint only packages touched since ref (default HEAD)',
   '  --pack [pm]            pack the package and lint the real tarball (auto|npm|pnpm|yarn|bun)',
   '  --from-npm <spec>      pack a published package from npm and lint the tarball',
@@ -143,6 +144,7 @@ function parseArgs(argv) {
     }
     else if (a === '--from-npm') { const spec = argv[++i]; if (!spec) fail('--from-npm needs a package spec'); options.npmSpecs.push(spec); }
     else if (a === '--profile') { options.profile = argv[++i]; if (!options.profile) fail('--profile needs a directory'); }
+    else if (a === '--candidate') { options.candidate = argv[++i]; if (!options.candidate) fail('--candidate needs a directory'); }
     else if (a === '--no-color') options.color = false;
     else if (a === '--quiet') options.quiet = true;
     else if (a.startsWith('-')) fail('unknown option: ' + a);
@@ -241,6 +243,7 @@ if (options.writeBaseline && options.prune) fail('--write-baseline and --prune a
 if (options.prune && !options.baselinePath) fail('--prune needs --baseline');
 if (options.init) { initFiles(options); process.exit(0); }
 
+if (options.candidate && !options.profile) fail('--candidate requires --profile');
 if (options.changed && options.profile) fail('--changed cannot be combined with --profile');
 
 if (options.changed) {
@@ -259,7 +262,7 @@ if (options.profile) {
   if (!['text', 'json'].includes(options.format)) fail('--profile supports --format text or json');
   let scan;
   try {
-    scan = scanProfile(resolve(options.profile), { dshVersion: options.dshVersion });
+    scan = scanProfile(resolve(options.profile), { dshVersion: options.dshVersion, candidate: options.candidate ? resolve(options.candidate) : undefined });
   } catch (error) {
     fail(error.message);
   }
