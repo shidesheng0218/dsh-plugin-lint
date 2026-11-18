@@ -85,3 +85,7 @@ node scripts/build-report.mjs --top 100                            # 静态检�
 - GitHub Actions 上仍有三个未过期的 `matrix-cells` artifact（2026-10-19、10-26、11-02），包含原始逐包 cell；任何已登录 GitHub 用户都可下载。
 
 需要时任何人都能在本地重建同样的数据（命令见 §4）。**数据属于跑探针的人，不属于这个仓库。**
+
+---
+
+**2026-11-18 口径说明：矩阵新鲜度。** `dsh-plugin-matrix status` 的数据年龄以每格的 `run.at` 与调用时刻之差计算，`--registry` 对照的是运行那一刻的 registry dist-tags（@deepseek-ai/dsh），两者都是"采集时点"口径而非"最新真值"。`watch` 只读 registry 元数据并产出待跑队列，本身不跑矩阵、不产生新的 cell。

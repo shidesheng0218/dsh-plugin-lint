@@ -217,7 +217,7 @@ node bin/dsh-plugin-lint.mjs --profile ~/.dsh/profiles/default  # host-truth sca
 node bin/dsh-plugin-lint.mjs --rules --explain E6
 ```
 
-`--changed` and `--staged` map a git diff back to the nearest `package.json`, so a monorepo lints only the packages a PR touches. `--pack`, `.tgz` and `--from-npm` force the publish phase and lint the real artifact: missing subpath exports, bins or icons are reported against what npm will actually ship, and tarballs containing path traversal or symlinks are rejected before extraction. `--profile` reads the runtime version and installed bundles from a DSH profile, reports which plugins the host will load or reject, and prints the exact `dsh plugin allow-version … --accept-risk` command for each rejection; with `--exit-code` it fails on any `will-reject`.
+`--changed` and `--staged` map a git diff back to the nearest `package.json`, so a monorepo lints only the packages a PR touches. `--pack`, `.tgz` and `--from-npm` force the publish phase and lint the real artifact: missing subpath exports, bins or icons are reported against what npm will actually ship, and tarballs containing path traversal or symlinks are rejected before extraction. `--profile` reads the runtime version and installed bundles from a DSH profile, reports which plugins the host will load or reject, and prints the exact `dsh plugin allow-version … --accept-risk` command for each rejection; with `--exit-code` it fails on any `will-reject`. Add `--candidate <dir>` to evaluate one not-yet-installed package against the profile (peer admission plus a static conflict scan against what's already installed); conflicts are reported as informational hints and never change the exit code.
 
 The composite action is the same surface in CI:
 
@@ -369,6 +369,26 @@ Three data-quality caveats apply to the matrix and to anything derived from it:
 - **Recorded version ≠ loaded version.** A cell records `plugin.version` from the registry at collection time, but the probe installs by bare package name. In **23 of the 200 cells** the recorded version differs from the version the cell notes was actually loaded (e.g. `dsh-context` records 0.72.0 while 0.71.0 was installed). The `reproduce` command in a cell does not pin a version, so rerunning it today can test a different release.
 - **The per-plugin data is not in the repository.** `matrix/cells/` and `matrix/index/` are gitignored. A clean clone contains the target list and the aggregate counts, not the cells; rebuilding them needs network access, npm and the probe.
 - **Older totals are not cited.** Earlier drafts reported a larger plugin run and a plugin-level count of verdicts that got worse. That run cannot be reconstructed from this repository, so it is not cited here; [docs/09](docs/09-ecosystem-measurements.md) records why.
+
+### Matrix freshness
+
+Three maintainer commands keep the tracked snapshot honest about its age and coverage. All are offline by default; `status --registry` and `watch` are the only ones that touch the network, and `watch` never runs the matrix — it only reads registry metadata and writes a refresh queue you feed back to `run.mjs`.
+
+```bash
+node bin/dsh-plugin-matrix.mjs status --cells matrix/cells --targets matrix/targets-top50.json
+# per pinned DSH version: cells, active/rejected/errors, data age, stale flag, missing compositions
+
+node bin/dsh-plugin-matrix.mjs status --registry
+# additionally compare covered versions against the registry dist-tags and report drift
+
+node bin/dsh-plugin-matrix.mjs watch --out matrix/queue.json
+# resolve new DSH dist-tags and stale plugin releases into a pinned queue (version + integrity)
+
+node bin/dsh-plugin-matrix.mjs diff matrix/cells-a matrix/cells-b
+# two runs: status transitions, error transitions, tools/prompt deltas, new/dropped cells
+```
+
+`diff` buckets a cell whose `run.outcome` is `error` on exactly one side into `errorTransitions`, so a real regression (`active → rejected-by-host`) is not drowned out by infrastructure flakiness. Legacy v1 cells have no `tools`/`systemPrompt`, so `diff` lists them under `notComparable` instead of inventing empty deltas.
 
 ### Upgrade preview
 
