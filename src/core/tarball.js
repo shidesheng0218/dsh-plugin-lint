@@ -39,8 +39,20 @@ function parsePax(body) {
  * directories are written; symlinks, hardlinks, and path traversal are
  * rejected. Returns the extracted file list.
  */
-export function extractTarball(buffer, dest) {
-  const tar = gunzipSync(buffer);
+export function extractTarball(buffer, dest, { maxBytes = MAX_BYTES, maxEntries = MAX_ENTRIES } = {}) {
+  if (![maxBytes, maxEntries].every((value) => Number.isSafeInteger(value) && value > 0)) {
+    throw new Error('tarball limits must be a positive integer');
+  }
+  const maxTarBytes = maxBytes + (maxEntries * 2 + 2) * BLOCK;
+  let tar;
+  try {
+    tar = gunzipSync(buffer, { maxOutputLength: maxTarBytes });
+  } catch (error) {
+    if (error?.code === 'ERR_BUFFER_TOO_LARGE') {
+      throw new Error('tarball expands beyond the size limit', { cause: error });
+    }
+    throw error;
+  }
   let offset = 0;
   let entries = 0;
   let bytes = 0;
@@ -60,9 +72,9 @@ export function extractTarball(buffer, dest) {
     const body = tar.subarray(dataStart, dataEnd);
     offset = dataStart + Math.ceil(size / BLOCK) * BLOCK;
     entries += 1;
-    if (entries > MAX_ENTRIES) throw new Error('tarball has too many entries');
+    if (entries > maxEntries) throw new Error('tarball has too many entries');
     bytes += size;
-    if (bytes > MAX_BYTES) throw new Error('tarball expands beyond the size limit');
+    if (bytes > maxBytes) throw new Error('tarball expands beyond the size limit');
 
     if (type === 'x' || type === 'g') { pax = { ...pax, ...parsePax(body) }; continue; }
     if (type === 'L') { longName = text(body, 0, body.length); continue; }

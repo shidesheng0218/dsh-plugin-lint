@@ -10,7 +10,7 @@
  */
 
 const VERSION_RE = /^(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+([0-9A-Za-z.-]+))?$/;
-const PARTIAL_RE = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?(?:-([0-9A-Za-z.-]+))?$/;
+const PARTIAL_RE = /^(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:-([0-9A-Za-z.-]+))?$/;
 
 export function parseVersion(text) {
   const match = VERSION_RE.exec(String(text ?? '').trim());
@@ -55,10 +55,13 @@ function version(major, minor = 0, patch = 0, prerelease = []) {
 function parsePartial(text) {
   const match = PARTIAL_RE.exec(text);
   if (!match) return null;
+  const wildcard = (value) => value !== undefined && /^[xX*]$/.test(value);
+  if ((wildcard(match[2]) || wildcard(match[3])) && match[4] !== undefined) return null;
+  if (wildcard(match[2]) && match[3] !== undefined && !wildcard(match[3])) return null;
   return {
     major: Number(match[1]),
-    minor: match[2] === undefined ? undefined : Number(match[2]),
-    patch: match[3] === undefined ? undefined : Number(match[3]),
+    minor: match[2] === undefined || wildcard(match[2]) ? undefined : Number(match[2]),
+    patch: match[3] === undefined || wildcard(match[3]) ? undefined : Number(match[3]),
     prerelease: match[4] ? match[4].split('.') : [],
   };
 }
@@ -74,8 +77,8 @@ function nextPatch(partial) { return version(partial.major, partial.minor ?? 0, 
 function caretBounds(partial) {
   const lower = { op: '>=', version: floor(partial) };
   let upper;
-  if (partial.major > 0) upper = nextMajor(partial);
-  else if ((partial.minor ?? 0) > 0) upper = nextMinor(partial);
+  if (partial.major > 0 || partial.minor === undefined) upper = nextMajor(partial);
+  else if (partial.minor > 0 || partial.patch === undefined) upper = nextMinor(partial);
   else upper = nextPatch(partial);
   return [lower, { op: '<', version: upper }];
 }

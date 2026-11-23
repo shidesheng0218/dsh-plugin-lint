@@ -130,6 +130,30 @@ test('a nested npmignore still applies when files is present', (t) => {
   assert.equal(hasPackedFile(packlist, 'lib/drop.js'), false);
 });
 
+test('ignore basename patterns match nested paths and negations like npm', (t) => {
+  const { dir, manifest } = packageFixture(t, {
+    'package.json': base(),
+    '.npmignore': '*.js\nicon.svg\n!keep.js\n',
+    'index.js': '',
+    'lib/drop.js': '',
+    'lib/keep.js': '',
+    'lib/deep/nested.js': '',
+    'assets/icon.svg': '',
+    'locale/en.json': '{}',
+  });
+  const packlist = buildPacklist(dir, manifest);
+  const actual = actualNpmPack(dir);
+  for (const rel of ['index.js', 'lib/drop.js', 'lib/keep.js', 'lib/deep/nested.js', 'assets/icon.svg', 'locale/en.json']) {
+    assert.equal(hasPackedFile(packlist, rel), actual.has(rel), rel);
+  }
+  assert.equal(actual.has('index.js'), true, 'main remains intrinsic');
+  assert.equal(actual.has('lib/drop.js'), false);
+  assert.equal(actual.has('lib/deep/nested.js'), false);
+  assert.equal(actual.has('assets/icon.svg'), false);
+  assert.equal(actual.has('lib/keep.js'), true);
+  assert.equal(actual.has('locale/en.json'), true);
+});
+
 const differentialArtifacts = ['index.js', 'lib/index.js', 'client.js', 'cordis.patch.yml', 'icon.png', 'locale/en.json'];
 
 function actualNpmPack(dir) {

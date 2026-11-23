@@ -261,7 +261,7 @@ The package ships `schema/dsh-manifest.schema.json` (subpath `@shidesheng0218/ds
 }
 ```
 
-The baseline fingerprint is `sha256(rule + file + normalized evidence)` and deliberately excludes the line number, so reformatting or rebuilding does not revive a suppressed finding. Every report still prints how many findings the baseline suppressed.
+The baseline fingerprint is `sha256(package + rule + file + normalized evidence)` and deliberately excludes the package version and line number, so reformatting or rebuilding does not revive a suppressed finding. Every report still prints how many findings the baseline suppressed. Baselines from earlier versions without package identity remain valid for one package; regenerate them before applying them to a multi-package run.
 
 To run the checkout instead of the npm release, use `node bin/dsh-plugin-lint.mjs <dir>`. Commands in this README that start with `node scripts/` also run from a **checkout** — the matrix runner, the probe, the upgrade preview, and the report builders read files the npm package does not ship.
 
@@ -710,7 +710,7 @@ node bin/dsh-plugin-lint.mjs --profile ~/.dsh/profiles/default  # 对已安装 p
 
 `--changed` / `--staged` 把 git diff 映射到最近的 `package.json`，monorepo 里只体检 PR 碰过的包。`--pack`、`.tgz` 与 `--from-npm` 强制进入 publish 阶段并体检真实产物：缺失的子路径 export、bin、icon 都按 npm 实际会发布的内容报告，含路径穿越或符号链接的 tarball 会在解包前被拒绝。`--profile` 从 DSH profile 读取运行时版本与已安装 bundle，列出宿主会加载/拒绝哪些插件，并为每个拒绝打印可直接执行的 `dsh plugin allow-version … --accept-risk` 命令；配合 `--exit-code` 时，任何 `will-reject` 都会让命令失败。
 
-baseline 的指纹是 `sha256(rule + file + 归一化 evidence)`，不含行号：格式化或重新构建不会让已抑制的问题复活；报告仍会显示被 baseline 抑制的数量。
+baseline 的指纹是 `sha256(package + rule + file + 归一化 evidence)`，不含包版本和行号：格式化或重新构建不会让已抑制的问题复活；报告仍会显示被 baseline 抑制的数量。早期版本生成的不含包身份的 baseline 仍可用于单包检查；用于多包检查前必须重新生成。
 
 composite action 把同一套能力带进 CI。`comment: true` 需要 job 的 `pull-requests: write`，只会创建一条评论并原地更新；`sarif: dsh-plugin-lint.sarif` 会写出 SARIF，再由 `codeql-action/upload-sarif` 上传（该 job 另需 `security-events: write`，upload 的 major 版本以 GitHub 文档为准）。npm 包同时带 `schema/dsh-manifest.schema.json`（子路径 `@shidesheng0218/dsh-plugin-lint/schema/dsh-manifest.schema.json`）；把 `$schema` 指向它，编辑器就能在 CI 之前校验 `dsh` 块。
 

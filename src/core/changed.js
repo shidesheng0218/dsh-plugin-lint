@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 /** Files changed against `ref` (default HEAD) or staged in the index. */
 export function changedFiles({ cwd = process.cwd(), ref, staged = false } = {}) {
-  const args = ['diff', '--name-only', '--diff-filter=ACMR'];
+  const args = ['diff', '--name-only', '--diff-filter=ACMRD'];
   if (staged) args.push('--cached');
   args.push(ref || 'HEAD');
   const output = execFileSync('git', args, { cwd, encoding: 'utf8' });

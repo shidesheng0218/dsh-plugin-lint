@@ -32,6 +32,37 @@ function demoPackage(root, name = 'pack-demo') {
   return root;
 }
 
+function errorPackage(root, name = 'pack-demo') {
+  demoPackage(root, name);
+  write(root, 'index.js', 'export function apply(ctx) { ctx.session.append("demo/custom", {}); }\n');
+  return root;
+}
+
+function fakeNpmPack(t, fixtureTgz) {
+  const bin = workspace(t, 'dsh-fake-bin-');
+  const fakeNpm = join(bin, 'npm');
+  writeFileSync(fakeNpm, [
+    '#!/bin/sh',
+    'dest=""',
+    'prev=""',
+    'for arg in "$@"; do',
+    '  [ "$prev" = "--pack-destination" ] && dest="$arg"',
+    '  prev="$arg"',
+    'done',
+    'cp "$FIXTURE_TGZ" "$dest/from-npm-demo-1.0.0.tgz"',
+    'echo from-npm-demo-1.0.0.tgz',
+    '',
+  ].join('\n'));
+  chmodSync(fakeNpm, 0o755);
+  return { ...process.env, PATH: bin + ':' + process.env.PATH, FIXTURE_TGZ: fixtureTgz };
+}
+
+function firstSarifUri(result) {
+  assert.equal(result.status, 0, result.stderr);
+  const sarif = JSON.parse(result.stdout);
+  return sarif.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uri;
+}
+
 function tarEntry(name, body) {
   const header = Buffer.alloc(512);
   header.write(name, 0, 100, 'utf8');
@@ -78,6 +109,28 @@ test('extractTarball rejects a traversal entry', () => {
   assert.throws(() => extractTarball(buffer, mkdtempSync(join(tmpdir(), 'dsh-tar-'))), /escapes the extraction directory/);
 });
 
+test('extractTarball enforces the expansion budget during gunzip', (t) => {
+  const dest = workspace(t);
+  const buffer = gzipSync(Buffer.concat([
+    tarEntry('package/index.js', Buffer.from('ok')),
+    Buffer.alloc(1024),
+    Buffer.alloc(8192),
+  ]));
+  assert.throws(
+    () => extractTarball(buffer, dest, { maxBytes: 1024, maxEntries: 1 }),
+    /expands beyond the size limit/,
+  );
+  assert.equal(existsSync(join(dest, 'package/index.js')), false);
+});
+
+test('extractTarball validates resource limits', (t) => {
+  const dest = workspace(t);
+  const buffer = gzipSync(Buffer.concat([tarEntry('package/index.js', Buffer.from('ok')), Buffer.alloc(1024)]));
+  for (const limits of [{ maxBytes: 0 }, { maxBytes: 1.5 }, { maxEntries: 0 }, { maxEntries: -1 }]) {
+    assert.throws(() => extractTarball(buffer, dest, limits), /positive integer/);
+  }
+});
+
 test('pnpm pack produces a tarball without running lifecycle scripts', (t) => {
   const probe = spawnSync('pnpm', ['--version'], { encoding: 'utf8', env: probeEnv });
   if (probe.status !== 0) return t.skip('pnpm is not installed');
@@ -108,26 +161,12 @@ test('--from-npm lints only the published spec, not the current directory', (t) 
   const published = demoPackage(workspace(t, 'dsh-npm-src-'), 'from-npm-demo');
   const packed = packDirectory(published);
   t.after(packed.cleanup);
-  const bin = workspace(t, 'dsh-fake-bin-');
-  const fakeNpm = join(bin, 'npm');
-  writeFileSync(fakeNpm, [
-    '#!/bin/sh',
-    'dest=""',
-    'prev=""',
-    'for arg in "$@"; do',
-    '  [ "$prev" = "--pack-destination" ] && dest="$arg"',
-    '  prev="$arg"',
-    'done',
-    'cp "$FIXTURE_TGZ" "$dest/from-npm-demo-1.0.0.tgz"',
-    'echo from-npm-demo-1.0.0.tgz',
-    '',
-  ].join('\n'));
-  chmodSync(fakeNpm, 0o755);
+  const env = fakeNpmPack(t, packed.tarball);
   const cwd = demoPackage(workspace(t, 'dsh-cwd-'), 'cwd-demo');
   const result = spawnSync(process.execPath, [BIN, '--from-npm', 'from-npm-demo@1.0.0', '--json'], {
     cwd,
     encoding: 'utf8',
-    env: { ...process.env, PATH: bin + ':' + process.env.PATH, FIXTURE_TGZ: packed.tarball },
+    env,
   });
   assert.equal(result.status, 0, result.stderr);
   const report = JSON.parse(result.stdout);
@@ -154,4 +193,40 @@ test('the CLI --pack packs the local tree and lints the artifact', (t) => {
   const report = JSON.parse(result.stdout);
   assert.equal(report.target.source, 'pack:npm');
   assert.equal(report.target.name, 'pack-demo');
+});
+
+test('--pack SARIF and GitHub locations use the original package root', (t) => {
+  const root = errorPackage(workspace(t));
+  const sarif = spawnSync(process.execPath, [BIN, '--pack', '--format', 'sarif'], { cwd: root, encoding: 'utf8' });
+  assert.equal(firstSarifUri(sarif), 'index.js');
+  assert.doesNotMatch(sarif.stdout, /dsh-tarball-/);
+
+  const github = spawnSync(process.execPath, [BIN, '--pack', '--format', 'github'], { cwd: root, encoding: 'utf8' });
+  assert.equal(github.status, 0, github.stderr);
+  assert.match(github.stdout, /file=index\.js/);
+  assert.doesNotMatch(github.stdout, /dsh-tarball-/);
+});
+
+test('.tgz SARIF locations use the archive as their logical root', (t) => {
+  const root = errorPackage(workspace(t));
+  const packed = packDirectory(root);
+  t.after(packed.cleanup);
+  const result = spawnSync(process.execPath, [BIN, packed.tarball, '--format', 'sarif'], { cwd: root, encoding: 'utf8' });
+  assert.equal(firstSarifUri(result), packed.tarball.replace(/\\/g, '/') + '!/index.js');
+  assert.doesNotMatch(result.stdout, /dsh-tarball-/);
+});
+
+test('--from-npm SARIF locations use the npm spec as their logical root', (t) => {
+  const published = errorPackage(workspace(t, 'dsh-npm-src-'), 'from-npm-demo');
+  const packed = packDirectory(published);
+  t.after(packed.cleanup);
+  const env = fakeNpmPack(t, packed.tarball);
+  const cwd = demoPackage(workspace(t, 'dsh-cwd-'), 'cwd-demo');
+  const result = spawnSync(process.execPath, [BIN, '--from-npm', 'from-npm-demo@1.0.0', '--format', 'sarif'], {
+    cwd,
+    encoding: 'utf8',
+    env,
+  });
+  assert.equal(firstSarifUri(result), 'npm:from-npm-demo@1.0.0!/index.js');
+  assert.doesNotMatch(result.stdout, /dsh-tarball-/);
 });

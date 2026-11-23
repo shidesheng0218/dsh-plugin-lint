@@ -54,14 +54,29 @@ function matches(pattern, relPath) {
     : false;
 }
 
-function ruleState(rules, relPath, initial) {
+function matchesIgnore(pattern, relPath) {
+  const raw = String(pattern).trim();
+  const withoutTrailingSlash = raw.replace(/\/+$/, '');
+  const anchored = withoutTrailingSlash.startsWith('/') || withoutTrailingSlash.includes('/');
+  const normalized = normalizePath(raw);
+  if (!normalized) return false;
+  if (anchored) return matches(normalized, relPath);
+  const segments = relPath.split('/');
+  if (normalized.includes('*') || normalized.includes('?') || normalized.includes('[')) {
+    const regex = globToRegExp(normalized);
+    return segments.some((segment) => regex.test(segment));
+  }
+  return segments.includes(normalized);
+}
+
+function ruleState(rules, relPath, initial, matcher = matches) {
   let state = initial;
   for (const raw of rules) {
     let pattern = String(raw).trim();
     if (!pattern) continue;
     const negated = pattern.startsWith('!');
     if (negated) pattern = pattern.slice(1);
-    if (matches(pattern, relPath)) state = !negated;
+    if (matcher(pattern, relPath)) state = !negated;
   }
   return state;
 }
@@ -165,7 +180,7 @@ export function buildPacklist(dir, manifest) {
         for (const group of groups) {
           const rel = normalizePath(relative(group.base, absolute));
           if (rel === '' || rel.startsWith('..')) continue;
-          if (ruleState(group.rules, rel, false)) {
+          if (ruleState(group.rules, rel, false, matchesIgnore)) {
             ignored = true;
             break;
           }

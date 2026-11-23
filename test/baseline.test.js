@@ -39,12 +39,49 @@ test('fingerprints are stable across line and whitespace changes', () => {
   assert.equal(normalizeEvidence(' a\n b\t'), 'a b');
 });
 
+test('fingerprints include package identity when supplied', () => {
+  assert.equal(fingerprint(finding(), 'package-a'), fingerprint(finding({ line: 99 }), 'package-a'));
+  assert.notEqual(fingerprint(finding(), 'package-a'), fingerprint(finding(), 'package-b'));
+  assert.notEqual(fingerprint(finding()), fingerprint(finding(), 'package-a'));
+});
+
 test('createBaseline deduplicates and records the ruleset identity', () => {
   const baseline = createBaseline([report([finding(), finding({ line: 9 }), finding({ rule: 'W1', level: 'warn', evidence: 'x' })])], { generatedAt: '2026-11-13T00:00:00.000Z' });
   assert.equal(baseline.schemaVersion, 1);
   assert.equal(baseline.findings.length, 2);
   assert.match(baseline.ruleset.hash, /^[0-9a-f]{64}$/);
   assert.equal(baseline.ruleset.rules.includes('E6'), true);
+});
+
+test('baselines isolate identical findings by package', () => {
+  const a = report([finding()], 'package-a');
+  const b = report([finding()], 'package-b');
+  const fromA = createBaseline([a]);
+  assert.equal(applyBaseline([a], fromA).suppressed, 1);
+  assert.equal(applyBaseline([b], fromA).suppressed, 0);
+
+  const both = createBaseline([a, b]);
+  assert.equal(both.findings.length, 2);
+  assert.deepEqual(both.findings.map((entry) => entry.package), ['package-a', 'package-b']);
+  assert.equal(applyBaseline([a, b], both).suppressed, 2);
+  const pruned = pruneBaseline(both, [a]);
+  assert.deepEqual(pruned.findings.map((entry) => entry.package), ['package-a']);
+});
+
+test('legacy unscoped baselines work for one package and reject multiple reports', () => {
+  const legacy = {
+    schemaVersion: 1,
+    findings: [{ fingerprint: fingerprint(finding()), rule: 'E1' }],
+  };
+  assert.equal(applyBaseline([report([finding()], 'package-a')], legacy).suppressed, 1);
+  assert.throws(
+    () => applyBaseline([report([finding()], 'package-a'), report([finding()], 'package-b')], legacy),
+    /single package.*regenerate/,
+  );
+  assert.throws(
+    () => pruneBaseline(legacy, [report([finding()], 'package-a'), report([finding()], 'package-b')]),
+    /single package.*regenerate/,
+  );
 });
 
 test('applyBaseline filters findings and recomputes summaries', () => {
@@ -75,4 +112,6 @@ test('baseline files round-trip and reject malformed input', (t) => {
   assert.deepEqual(readBaseline(path), baseline);
   writeFileSync(path, '{"schemaVersion":1,"findings":{}}');
   assert.throws(() => readBaseline(path), /not a dsh-plugin-lint baseline/);
+  writeFileSync(path, '{"schemaVersion":1,"findings":[{"fingerprint":"sha256:x","rule":"E1","package":""}]}');
+  assert.throws(() => readBaseline(path), /package/);
 });

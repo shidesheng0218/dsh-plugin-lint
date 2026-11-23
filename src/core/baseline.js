@@ -9,13 +9,20 @@ export function normalizeEvidence(value) {
   return String(value ?? '').replace(/\s+/g, ' ').trim();
 }
 
-/** A fingerprint deliberately excludes the line number. */
-export function fingerprint(finding) {
+/** A fingerprint excludes the line number and can optionally be package-scoped. */
+export function fingerprint(finding, packageName) {
   return 'sha256:' + sha256(stableStringify({
+    ...(packageName === undefined ? {} : { package: packageName }),
     rule: finding.rule,
     file: finding.file || 'package.json',
     evidence: normalizeEvidence(finding.evidence),
   }));
+}
+
+function assertLegacyScope(baseline, reports) {
+  if (reports.length !== 1 && baseline.findings.some((entry) => entry.package === undefined)) {
+    throw new Error('baseline entries without package identity require a single package; regenerate the baseline for multiple packages');
+  }
 }
 
 export function rulesetIdentity() {
@@ -30,12 +37,15 @@ export function createBaseline(reports, { generatedAt = new Date().toISOString()
   const seen = new Set();
   const findings = [];
   for (const report of reports) {
+    const packageName = report.target.name;
     for (const finding of report.findings) {
-      const print = fingerprint(finding);
-      if (seen.has(print)) continue;
-      seen.add(print);
+      const print = fingerprint(finding, packageName);
+      const key = packageName + '\0' + print;
+      if (seen.has(key)) continue;
+      seen.add(key);
       findings.push({
         fingerprint: print,
+        package: packageName,
         rule: finding.rule,
         level: finding.level,
         file: finding.file || 'package.json',
@@ -60,6 +70,9 @@ export function readBaseline(path) {
     if (typeof entry.fingerprint !== 'string' || typeof entry.rule !== 'string') {
       throw new Error('baseline entry is missing fingerprint/rule: ' + path);
     }
+    if (entry.package !== undefined && (typeof entry.package !== 'string' || entry.package.length === 0)) {
+      throw new Error('baseline entry has an invalid package: ' + path);
+    }
   }
   return value;
 }
@@ -70,12 +83,18 @@ export function writeBaseline(path, baseline) {
 
 /** Filter baseline fingerprints out of each report and recompute its summary. */
 export function applyBaseline(reports, baseline, { path } = {}) {
-  const known = new Set(baseline.findings.map((entry) => entry.fingerprint));
+  assertLegacyScope(baseline, reports);
+  const scoped = new Set(baseline.findings.filter((entry) => entry.package !== undefined)
+    .map((entry) => entry.package + '\0' + entry.fingerprint));
+  const legacy = new Set(baseline.findings.filter((entry) => entry.package === undefined)
+    .map((entry) => entry.fingerprint));
   let suppressed = 0;
   const filtered = reports.map((report) => {
     const findings = [];
+    const packageName = report.target.name;
     for (const finding of report.findings) {
-      if (known.has(fingerprint(finding))) suppressed += 1;
+      const scopedMatch = scoped.has(packageName + '\0' + fingerprint(finding, packageName));
+      if (scopedMatch || legacy.has(fingerprint(finding))) suppressed += 1;
       else findings.push(finding);
     }
     const summary = { error: 0, warn: 0, info: 0 };
@@ -87,12 +106,22 @@ export function applyBaseline(reports, baseline, { path } = {}) {
 
 /** Keep only baseline entries that still occur in the current run. */
 export function pruneBaseline(baseline, reports, { generatedAt = baseline.generatedAt } = {}) {
-  const current = new Set();
-  for (const report of reports) for (const finding of report.findings) current.add(fingerprint(finding));
+  assertLegacyScope(baseline, reports);
+  const scoped = new Set();
+  const legacy = new Set();
+  for (const report of reports) {
+    const packageName = report.target.name;
+    for (const finding of report.findings) {
+      scoped.add(packageName + '\0' + fingerprint(finding, packageName));
+      legacy.add(fingerprint(finding));
+    }
+  }
   return {
     ...baseline,
     generatedAt,
     ruleset: rulesetIdentity(),
-    findings: baseline.findings.filter((entry) => current.has(entry.fingerprint)),
+    findings: baseline.findings.filter((entry) => entry.package === undefined
+      ? legacy.has(entry.fingerprint)
+      : scoped.has(entry.package + '\0' + entry.fingerprint)),
   };
 }
