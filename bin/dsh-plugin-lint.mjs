@@ -287,13 +287,18 @@ process.on('exit', () => {
 });
 
 const reports = [];
+function lintAt(dir, options, reportPath = dir) {
+  const report = lintPackage(dir, options);
+  report.target.path = reportPath;
+  return report;
+}
 for (const spec of options.npmSpecs) {
   try {
     const packed = packFromNpm(spec);
     cleanups.push(packed.cleanup);
     const extracted = extractTarballTo(packed.tarball);
     cleanups.push(extracted.cleanup);
-    reports.push(lintPackage(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: packed.source }));
+    reports.push(lintAt(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: packed.source }, packed.source + '!/'));
   } catch (error) {
     fail(error.message);
   }
@@ -303,7 +308,7 @@ for (const dir of options.dirs) {
     try {
       const extracted = extractTarballTo(resolve(dir));
       cleanups.push(extracted.cleanup);
-      reports.push(lintPackage(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: 'tarball:' + dir }));
+      reports.push(lintAt(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: 'tarball:' + dir }, resolve(dir) + '!/'));
     } catch (error) {
       fail(error.message);
     }
@@ -316,9 +321,9 @@ for (const dir of options.dirs) {
         cleanups.push(packed.cleanup);
         const extracted = extractTarballTo(packed.tarball);
         cleanups.push(extracted.cleanup);
-        reports.push(lintPackage(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: 'pack:' + packed.manager }));
+        reports.push(lintAt(extracted.root, { dshVersion: options.dshVersion, phase: 'publish', source: 'pack:' + packed.manager }, target));
       } else {
-        reports.push(lintPackage(target, { dshVersion: options.dshVersion, phase: options.phase }));
+        reports.push(lintAt(target, { dshVersion: options.dshVersion, phase: options.phase }));
       }
     } catch (error) {
       fail(error.message);
@@ -330,18 +335,22 @@ let active = reports;
 let suppressed = 0;
 let baseline;
 const baselinePath = options.baselinePath || (options.writeBaseline ? '.dsh-plugin-lint-baseline.json' : undefined);
-if (options.writeBaseline) {
-  baseline = createBaseline(reports);
-  writeBaseline(baselinePath, baseline);
-  console.error('dsh-plugin-lint: wrote baseline ' + baselinePath + ' (' + baseline.findings.length + ' finding(s))');
-} else if (options.prune) {
-  baseline = pruneBaseline(readBaseline(baselinePath), reports);
-  writeBaseline(baselinePath, baseline);
-  console.error('dsh-plugin-lint: pruned baseline ' + baselinePath + ' (' + baseline.findings.length + ' finding(s))');
-} else if (baselinePath && existsSync(baselinePath)) {
-  const applied = applyBaseline(reports, readBaseline(baselinePath), { path: baselinePath });
-  active = applied.reports;
-  suppressed = applied.suppressed;
+try {
+  if (options.writeBaseline) {
+    baseline = createBaseline(reports);
+    writeBaseline(baselinePath, baseline);
+    console.error('dsh-plugin-lint: wrote baseline ' + baselinePath + ' (' + baseline.findings.length + ' finding(s))');
+  } else if (options.prune) {
+    baseline = pruneBaseline(readBaseline(baselinePath), reports);
+    writeBaseline(baselinePath, baseline);
+    console.error('dsh-plugin-lint: pruned baseline ' + baselinePath + ' (' + baseline.findings.length + ' finding(s))');
+  } else if (baselinePath && existsSync(baselinePath)) {
+    const applied = applyBaseline(reports, readBaseline(baselinePath), { path: baselinePath });
+    active = applied.reports;
+    suppressed = applied.suppressed;
+  }
+} catch (error) {
+  fail(error.message);
 }
 
 function render() {

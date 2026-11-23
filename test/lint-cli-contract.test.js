@@ -97,7 +97,7 @@ test('SARIF uses relative paths, per-rule help and partial fingerprints', (t) =>
   assert.ok(result);
   assert.equal(result.locations[0].physicalLocation.artifactLocation.uri, 'error-plugin/index.js');
   assert.equal(result.locations[0].physicalLocation.artifactLocation.uriBaseId, '%SRCROOT%');
-  assert.match(result.partialFingerprints['dshPluginLint/v1'], /^sha256:[0-9a-f]{64}$/);
+  assert.match(result.partialFingerprints['dshPluginLint/v2'], /^sha256:[0-9a-f]{64}$/);
   assert.match(sarif.runs[0].tool.driver.rules.find((rule) => rule.id === 'E1').helpUri, /docs\/rules\/E1\.md$/);
 });
 
@@ -112,6 +112,30 @@ test('a baseline suppresses findings and --write-baseline records them', (t) => 
   assert.equal(run(root, [dir, '--baseline', baselinePath, '--exit-code']).status, 0);
   const pruned = run(root, [dir, '--baseline', baselinePath, '--prune']);
   assert.equal(pruned.status, 0);
+});
+
+test('baseline failures use the CLI error contract', (t) => {
+  const root = workspace(t);
+  const dir = errorPackage(root);
+  const malformed = join(root, 'malformed.json');
+  writeFileSync(malformed, '{not-json');
+  const invalid = run(root, [dir, '--baseline', malformed]);
+  assert.equal(invalid.status, 2);
+  assert.doesNotMatch(invalid.stderr, /^\s+at\s/m);
+
+  const other = packageAt(root, 'other-plugin', {
+    'package.json': { name: 'other-plugin', version: '1.0.0', main: 'index.js' },
+    'index.js': 'export function apply(ctx) { ctx.session.append("demo/custom", {}); }',
+  });
+  const legacy = join(root, 'legacy.json');
+  writeFileSync(legacy, JSON.stringify({
+    schemaVersion: 1,
+    findings: [{ fingerprint: 'sha256:legacy', rule: 'E1' }],
+  }));
+  const multiple = run(root, [dir, other, '--baseline', legacy]);
+  assert.equal(multiple.status, 2);
+  assert.match(multiple.stderr, /single package.*regenerate/);
+  assert.doesNotMatch(multiple.stderr, /^\s+at\s/m);
 });
 
 test('--output-file writes the report instead of stdout', (t) => {

@@ -53,6 +53,31 @@ test('caret and tilde ranges use the npm upper bounds', () => {
   assert.equal(satisfies('2.0.0', '~1'), false);
 });
 
+test('partial caret ranges use the node-semver upper bounds', () => {
+  const cases = [
+    ['0.5.0', '^0', true],
+    ['1.0.0', '^0', false],
+    ['0.0.5', '^0.0', true],
+    ['0.1.0', '^0.0', false],
+    ['0.2.9', '^0.2', true],
+    ['0.3.0', '^0.2', false],
+  ];
+  for (const [version, range, expected] of cases) {
+    assert.equal(satisfies(version, range), expected, `${version} against ${range}`);
+  }
+});
+
+test('numeric-major x-ranges accept only their missing precision', () => {
+  for (const range of ['1.x', '1.X', '1.*']) {
+    assert.equal(satisfies('1.4.0', range), true, range);
+    assert.equal(satisfies('2.0.0', range), false, range);
+  }
+  for (const range of ['1.2.x', '1.2.X', '1.2.*']) {
+    assert.equal(satisfies('1.2.8', range), true, range);
+    assert.equal(satisfies('1.3.0', range), false, range);
+  }
+});
+
 test('hyphen ranges and OR alternatives', () => {
   assert.equal(satisfies('1.5.0', '1.2.3 - 2.3.4'), true);
   assert.equal(satisfies('2.3.4', '1.2.3 - 2.3.4'), true);
@@ -68,5 +93,6 @@ test('ranges outside the grammar are undecidable, never guessed', () => {
   assert.equal(isDecidableRange('latest'), false);
   assert.equal(isDecidableRange('git+https://example.test/repo'), false);
   assert.equal(satisfies('0.2.0', 'workspace:^'), null);
+  assert.equal(satisfies('1.2.3', '1.x.3'), null);
   assert.equal(satisfies('0.2.0', '>=0.2.0 <0.3.0'), true);
 });

@@ -83,6 +83,18 @@ test('toSarif accepts a single report and defaults a missing line to 1', () => {
   assert.equal(single.runs[0].results[0].locations[0].physicalLocation.region.startLine, 1);
 });
 
+test('toSarif scopes partial fingerprints by package', () => {
+  const a = report({ target: { name: 'package-a', version: '1.0.0', path: '/tmp/a' } });
+  const b = report({ target: { name: 'package-b', version: '1.0.0', path: '/tmp/b' } });
+  const results = toSarif([a, b]).runs[0].results;
+  assert.notEqual(
+    results[0].partialFingerprints['dshPluginLint/v2'],
+    results[3].partialFingerprints['dshPluginLint/v2'],
+  );
+  assert.match(results[0].partialFingerprints['dshPluginLint/v2'], /^sha256:[0-9a-f]{64}$/);
+  assert.equal(results[0].partialFingerprints['dshPluginLint/v1'], undefined);
+});
+
 test('toBadge carries the verdict, the colour and the declared version count', () => {
   const red = toBadge(report());
   assert.match(red, /dsh-plugin-lint: 1 error · 1 warn · 2 DSH/);

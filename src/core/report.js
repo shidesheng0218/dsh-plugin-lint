@@ -112,7 +112,7 @@ export function toSarif(reports) {
         ruleIndex: ruleIndex.get(f.rule),
         level: f.level === 'error' ? 'error' : f.level === 'warn' ? 'warning' : 'note',
         message: { text: f.message + (f.hint ? ' — ' + f.hint : '') },
-        partialFingerprints: { 'dshPluginLint/v1': fingerprint(f) },
+        partialFingerprints: { 'dshPluginLint/v2': fingerprint(f, report.target.name) },
         locations: [{
           physicalLocation: {
             artifactLocation: { uri: uriFor(report, f.file), uriBaseId: '%SRCROOT%' },

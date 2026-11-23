@@ -20,6 +20,32 @@ function git(root, args) {
   return execFileSync('git', ['-c', 'user.email=test@example.test', '-c', 'user.name=Test', ...args], { cwd: root, encoding: 'utf8' });
 }
 
+function committedPackages(t) {
+  const root = mkdtempSync(join(tmpdir(), 'dsh-changed-deletion-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  write(root, 'packages/a/package.json', { name: 'alpha', version: '1.0.0', main: 'index.js' });
+  write(root, 'packages/a/index.js', 'export const a = 1;\n');
+  write(root, 'packages/b/package.json', { name: 'beta', version: '1.0.0', main: 'index.js' });
+  write(root, 'packages/b/index.js', 'export const b = 1;\n');
+  git(root, ['init']);
+  git(root, ['add', '.']);
+  git(root, ['commit', '-m', 'init']);
+  return root;
+}
+
+function assertDeletionIsLinted(root, staged) {
+  rmSync(join(root, 'packages/a/index.js'));
+  if (staged) git(root, ['add', '-u']);
+  const files = changedFiles({ cwd: root, staged });
+  assert.deepEqual(files, ['packages/a/index.js']);
+  assert.deepEqual(packageRoots(files, root), [join(root, 'packages/a')]);
+  const args = staged ? ['--staged'] : ['--changed', 'HEAD'];
+  const result = spawnSync(process.execPath, [BIN, ...args, '--no-color', '--exit-code'], { cwd: root, encoding: 'utf8' });
+  assert.equal(result.status, 1, result.stderr);
+  assert.match(result.stdout, /alpha@1\.0\.0[\s\S]*E3 error/);
+  assert.doesNotMatch(result.stdout, /beta@1\.0\.0/);
+}
+
 test('packageRoots maps files to the nearest package and ignores files outside one', (t) => {
   const root = mkdtempSync(join(tmpdir(), 'dsh-changed-'));
   t.after(() => rmSync(root, { recursive: true, force: true }));
@@ -57,4 +83,12 @@ test('changedFiles and the CLI honour --changed and --staged in a git repo', (t)
   assert.equal(staged.status, 0, staged.stderr);
   assert.match(staged.stdout, /beta:/);
   assert.doesNotMatch(staged.stdout, /alpha:/);
+});
+
+test('changedFiles and the CLI honor a deletion-only worktree diff', (t) => {
+  assertDeletionIsLinted(committedPackages(t), false);
+});
+
+test('changedFiles and the CLI honor a deletion-only staged diff', (t) => {
+  assertDeletionIsLinted(committedPackages(t), true);
 });
