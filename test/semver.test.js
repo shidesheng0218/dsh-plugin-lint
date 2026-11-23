@@ -94,5 +94,8 @@ test('ranges outside the grammar are undecidable, never guessed', () => {
   assert.equal(isDecidableRange('git+https://example.test/repo'), false);
   assert.equal(satisfies('0.2.0', 'workspace:^'), null);
   assert.equal(satisfies('1.2.3', '1.x.3'), null);
+  assert.equal(satisfies('1.2.3', '1.x-alpha'), null);
+  assert.equal(satisfies('1.2.3', '1.2.*-alpha'), null);
+  assert.equal(satisfies('1.2.3', '^1.x-alpha'), null);
   assert.equal(satisfies('0.2.0', '>=0.2.0 <0.3.0'), true);
 });

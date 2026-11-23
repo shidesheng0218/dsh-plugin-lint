@@ -56,6 +56,7 @@ function parsePartial(text) {
   const match = PARTIAL_RE.exec(text);
   if (!match) return null;
   const wildcard = (value) => value !== undefined && /^[xX*]$/.test(value);
+  if ((wildcard(match[2]) || wildcard(match[3])) && match[4] !== undefined) return null;
   if (wildcard(match[2]) && match[3] !== undefined && !wildcard(match[3])) return null;
   return {
     major: Number(match[1]),
